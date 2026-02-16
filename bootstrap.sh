@@ -32,7 +32,7 @@ else
   if ! grep -q "^experimental-features" /etc/nix/nix.conf; then
     echo "experimental-features = nix-command flakes" | sudo tee -a /etc/nix/nix.conf >/dev/null
   else
-    # normalize (safe): ensure both are present
+    # Ensure both are present (normalize line)
     if ! grep -q "flakes" /etc/nix/nix.conf || ! grep -q "nix-command" /etc/nix/nix.conf; then
       sudo sed -i 's/^experimental-features *=.*/experimental-features = nix-command flakes/' /etc/nix/nix.conf
     fi
@@ -42,8 +42,12 @@ export NIX_CONFIG="${NIX_CONFIG:-} experimental-features = nix-command flakes"
 
 echo "==> Ensuring git exists..."
 if ! command -v git >/dev/null 2>&1; then
-  # doesn't depend on your repo config yet
-  nix-env -iA nixpkgs.git
+  # Prefer modern CLI if available, fallback to nix-env
+  if command -v nix >/dev/null 2>&1 && nix --version >/dev/null 2>&1; then
+    nix profile install nixpkgs#git
+  else
+    nix-env -iA nixpkgs.git
+  fi
 fi
 
 echo "==> Capturing THIS machine's hardware-configuration.nix..."
@@ -68,27 +72,37 @@ if [[ "$BACKUP" -eq 1 && -d "$TARGET_DIR" ]]; then
   sudo mv "$TARGET_DIR" "${TARGET_DIR}.bak.${TS}"
 fi
 
-echo "==> Cloning repo into $TARGET_DIR..."
-sudo mkdir -p "$TARGET_DIR"
-sudo chown -R "$(id -un)":"$(id -gn)" "$TARGET_DIR"
+echo "==> Cloning repo to a temporary directory..."
+CLONE_DIR="$(mktemp -d -t nixos-dots.XXXXXX)"
+cleanup() {
+  rm -rf "$CLONE_DIR" || true
+  rm -f "$HW_TMP" || true
+}
+trap cleanup EXIT
 
-# Clean clone
-rm -rf "$TARGET_DIR"/*
 if [[ -n "$BRANCH" ]]; then
-  git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TARGET_DIR"
+  git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$CLONE_DIR"
 else
-  git clone --depth 1 "$REPO_URL" "$TARGET_DIR"
+  git clone --depth 1 "$REPO_URL" "$CLONE_DIR"
 fi
 
 echo "==> Overwriting repo hardware-configuration.nix with THIS machine's..."
-sudo cp -f "$HW_TMP" "$TARGET_DIR/hardware-configuration.nix"
-rm -f "$HW_TMP"
+cp -f "$HW_TMP" "$CLONE_DIR/hardware-configuration.nix"
+
+echo "==> Installing repo into $TARGET_DIR..."
+sudo mkdir -p "$TARGET_DIR"
+
+# Safely clear target dir contents (including dotfiles) without glob errors.
+# Use find so empty dirs don't cause failures under 'set -e'.
+sudo find "$TARGET_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+
+# Copy clone into /etc/nixos
+sudo cp -a "$CLONE_DIR"/. "$TARGET_DIR"/
 
 if [[ "$ALLOW_UNFREE" -eq 1 ]]; then
   export NIXPKGS_ALLOW_UNFREE=1
 fi
 
-# Friendly warning if the logged-in user isn't the one the config expects
 CURRENT_USER="$(id -un)"
 if [[ "$CURRENT_USER" != "$EXPECTED_USER" ]]; then
   echo ""
@@ -105,3 +119,4 @@ sudo nixos-rebuild switch --flake "$TARGET_DIR#$FLAKE_HOST"
 echo ""
 echo "✅ Bootstrap complete."
 echo "If GNOME theme/extensions don’t apply immediately, log out/in or reboot."
+
