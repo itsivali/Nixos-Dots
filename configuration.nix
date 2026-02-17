@@ -179,17 +179,9 @@
   ############################################################
   programs.wireshark = {
     enable = true;
-    package = pkgs.wireshark-qt;
+    package = pkgs.wireshark;
   };
 
-  # Force the privileged wrapper so capture works without root
-  security.wrappers.dumpcap = {
-    source = "${pkgs.wireshark-qt}/bin/dumpcap";
-    owner = "root";
-    group = "wireshark";
-    permissions = "u+rx,g+rx,o-rx";
-    capabilities = "cap_net_raw,cap_net_admin+eip";
-  };
 
   ############################################################
   # ZSH (System-level; HM handles most of your Zsh setup)
