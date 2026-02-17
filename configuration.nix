@@ -31,17 +31,14 @@
   # DISK ENCRYPTION (LUKS)
   #
   # NOTE:
-  # - You DO NOT put the passphrase (e.g. "pink") in configuration.nix.
-  # - LUKS is enabled in /etc/nixos/hardware-configuration.nix via
-  #   boot.initrd.luks.devices.<name>.device = "...";
-  # - If your disk is already installed unencrypted, this requires reinstall
-  #   or a careful migration. Keep this section as guidance only.
+  # - You DO NOT put the passphrase in configuration.nix.
+  # - LUKS is enabled in /etc/nixos/hardware-configuration.nix
   ############################################################
   # Example (ONLY if your install is already LUKS):
   #
   # boot.initrd.luks.devices."cryptroot" = {
   #   device = "/dev/disk/by-uuid/XXXX-XXXX";
-  #   allowDiscards = true; # if using SSD/NVMe and want TRIM
+  #   allowDiscards = true;
   # };
 
   ############################################################
@@ -96,7 +93,6 @@
   ############################################################
   # GNOME — ULTRA FAST MODE
   ############################################################
-  # Faster D-Bus implementation (usually a measurable win)
   services.dbus.implementation = "broker";
 
   services.xserver = {
@@ -110,39 +106,23 @@
   services.displayManager.gdm.enable = true;
   services.desktopManager.gnome.enable = true;
 
-  # GNOME “fast mode”: disable indexers + unnecessary background plumbing
-  # (IMPORTANT: uses the *renamed* options, and mkForce fixes conflicts with GNOME defaults)
   services.gnome = {
-    # renamed: core-utilities -> core-apps
     core-apps.enable = true;
-
-    # renamed: tracker -> tinysparql
     tinysparql.enable = lib.mkForce false;
-
-    # renamed: tracker-miners -> localsearch
     localsearch.enable = lib.mkForce false;
-
-    # GNOME enables this by default; mkForce prevents conflict
     evolution-data-server.enable = lib.mkForce false;
-
-    # Optional trims (safe if you don’t use GNOME Online Accounts / integrated mail/calendar)
     gnome-online-accounts.enable = lib.mkForce false;
-
-    # Optional trim
     games.enable = lib.mkForce false;
   };
 
-  # NixOS users don’t need PackageKit running in the background
   services.packagekit.enable = false;
 
-  # GNOME compositor/session tuning (keep conservative; avoid forcing weird FPS)
   environment.sessionVariables = {
     MUTTER_DEBUG_FORCE_KMS_MODE = "1";
     GIO_USE_VFS = "local";
     MOZ_ENABLE_WAYLAND = "1";
   };
 
-  # Remove GNOME bloat from the default environment
   environment.gnome.excludePackages = with pkgs; [
     epiphany
     gnome-tour
@@ -158,7 +138,6 @@
 
   services.printing.enable = true;
 
-  # Reduce shutdown stalls for user services
   systemd.user.extraConfig = ''
     DefaultTimeoutStopSec=3s
   '';
@@ -196,6 +175,23 @@
   };
 
   ############################################################
+  # WIRESHARK — FIX CAPTURE PERMISSIONS ON NixOS
+  ############################################################
+  programs.wireshark = {
+    enable = true;
+    package = pkgs.wireshark-qt;
+  };
+
+  # Force the privileged wrapper so capture works without root
+  security.wrappers.dumpcap = {
+    source = "${pkgs.wireshark-qt}/bin/dumpcap";
+    owner = "root";
+    group = "wireshark";
+    permissions = "u+rx,g+rx,o-rx";
+    capabilities = "cap_net_raw,cap_net_admin+eip";
+  };
+
+  ############################################################
   # ZSH (System-level; HM handles most of your Zsh setup)
   ############################################################
   programs.zsh = {
@@ -210,17 +206,13 @@
     # Core tools
     vim wget curl git htop btop killall unzip zip file tree
 
-    # Zsh ecosystem (HM will still manage your dotfiles/config)
-    zsh
-    zsh-powerlevel10k
-    zsh-autosuggestions
-    zsh-syntax-highlighting
-
-    # Dev stack
     gcc
     gnumake
     nodejs
     docker-compose
+
+    # Capability tools (for getcap/setcap checks)
+    libcap
 
     # Home Manager CLI
     home-manager
@@ -308,8 +300,6 @@
   # SYSTEM SERVICES
   ############################################################
   services.fwupd.enable = true;
-
-  # thermald is mainly Intel-focused; disable on AMD (keeps things clean)
   services.thermald.enable = lib.mkDefault false;
 
   ############################################################
