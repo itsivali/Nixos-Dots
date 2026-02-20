@@ -20,6 +20,12 @@
     kernel.sysctl = {
       "vm.swappiness" = 10;
       "vm.vfs_cache_pressure" = 50;
+
+      # Reduce latency spikes on desktop workloads
+      "vm.dirty_background_ratio" = 5;
+      "vm.dirty_ratio" = 20;
+      "vm.page-cluster" = 0;
+
       "kernel.nmi_watchdog" = 0;
 
       "kernel.sched_autogroup_enabled" = 1;
@@ -56,6 +62,10 @@
   };
 
   powerManagement.enable = true;
+  services.power-profiles-daemon.enable = true;
+
+  # Workstation-first defaults (snappier at the cost of some power usage)
+  powerManagement.cpuFreqGovernor = lib.mkDefault "performance";
 
   # AMD CPU microcode
   hardware.cpu.amd.updateMicrocode = true;
@@ -104,26 +114,48 @@
   };
 
   services.displayManager.gdm.enable = true;
+  services.displayManager.gdm.wayland = true;
   services.desktopManager.gnome.enable = true;
 
+  # Disable optional background daemons that can wake up GNOME.
+  services.geoclue2.enable = lib.mkForce false;   # Location services / automatic timezone
+  services.avahi.enable = lib.mkForce false;      # mDNS/.local discovery
   services.gnome = {
+    # Install GNOME's core apps (Settings, Files, etc.)
     core-apps.enable = true;
+
+    # Big performance wins: disable local content indexing (Tracker/TinySPARQL + LocalSearch).
+    # Search still works for apps/settings, but not full file *content* indexing.
     tinysparql.enable = lib.mkForce false;
     localsearch.enable = lib.mkForce false;
-    evolution-data-server.enable = lib.mkForce false;
-    gnome-online-accounts.enable = lib.mkForce false;
+
+    # Keep everyday GNOME features working, but disable optional background services.
+    gnome-software.enable = lib.mkForce false;         # GNOME Software background update checks
+    gnome-user-share.enable = lib.mkForce false;       # WebDAV sharing + related daemons
+    rygel.enable = lib.mkForce false;                  # UPnP/DLNA media server
+    gnome-remote-desktop.enable = lib.mkForce false;   # GNOME Remote Desktop (RDP/VNC)
+
+    # Optional apps
     games.enable = lib.mkForce false;
   };
+
+
+
 
   services.packagekit.enable = false;
 
   environment.sessionVariables = {
+    # Prefer native Wayland where possible (smoother + less XWayland overhead)
+    NIXOS_OZONE_WL = "1";
+    ELECTRON_OZONE_PLATFORM_HINT = "auto";
     MUTTER_DEBUG_FORCE_KMS_MODE = "1";
     GIO_USE_VFS = "local";
     MOZ_ENABLE_WAYLAND = "1";
   };
 
   environment.gnome.excludePackages = with pkgs; [
+    gnome-software
+    gnome-initial-setup
     epiphany
     gnome-tour
     gnome-photos
@@ -141,6 +173,7 @@
   systemd.user.extraConfig = ''
     DefaultTimeoutStopSec=3s
   '';
+  
 
   ############################################################
   # AUDIO — PIPEWIRE MODERN STACK
@@ -197,7 +230,7 @@
   environment.systemPackages = with pkgs; [
     # Core tools
     vim wget curl git htop btop killall unzip zip file tree
-
+    
     gcc
     gnumake
     nodejs
@@ -254,6 +287,7 @@
   systemd.sockets.docker = {
     wantedBy = [ "sockets.target" ];
   };
+  
 
   virtualisation.podman.enable = true;
 
@@ -292,11 +326,13 @@
   # SYSTEM SERVICES
   ############################################################
   services.fwupd.enable = true;
+  services.fstrim.enable = true;
+  services.irqbalance.enable = true;
   services.thermald.enable = lib.mkDefault false;
 
   ############################################################
   # STATE VERSION
   ############################################################
-  system.stateVersion = "24.11";
+  system.stateVersion = "25.11";
 }
 

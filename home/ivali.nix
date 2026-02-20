@@ -59,6 +59,110 @@ let
       '
   '';
 
+
+  # ----------------------------
+  # NixOS Flake Maintenance Helpers
+  # ----------------------------
+  flakeDir = "/etc/nixos";
+
+  nixosFlakeUpdate = pkgs.writeShellScriptBin "nixos-flake-update" ''
+    set -euo pipefail
+    echo "==> Updating flake.lock in ${flakeDir}..."
+    sudo ${pkgs.nix}/bin/nix flake update --flake "${flakeDir}"
+  '';
+
+  nixosRebuildSwitch = pkgs.writeShellScriptBin "nixos-switch" ''
+    set -euo pipefail
+    echo "==> Rebuilding (switch) ${flakeRef}..."
+    sudo ${pkgs.nixos-rebuild}/bin/nixos-rebuild switch --flake "${flakeRef}"
+  '';
+
+  nixosRebuildTest = pkgs.writeShellScriptBin "nixos-test" ''
+    set -euo pipefail
+    echo "==> Rebuilding (test) ${flakeRef}..."
+    sudo ${pkgs.nixos-rebuild}/bin/nixos-rebuild test --flake "${flakeRef}"
+  '';
+
+  nixosRebuildBoot = pkgs.writeShellScriptBin "nixos-boot" ''
+    set -euo pipefail
+    echo "==> Rebuilding (boot) ${flakeRef}..."
+    sudo ${pkgs.nixos-rebuild}/bin/nixos-rebuild boot --flake "${flakeRef}"
+  '';
+
+  nixosUpdate = pkgs.writeShellScriptBin "nixos-update" ''
+    set -euo pipefail
+    ${pkgs.coreutils}/bin/echo "==> NixOS update: flake update + switch"
+    nixos-flake-update
+    nixos-switch
+  '';
+
+  nixosUpgrade = pkgs.writeShellScriptBin "nixos-upgrade" ''
+    set -euo pipefail
+    ${pkgs.coreutils}/bin/echo "==> NixOS upgrade: update + switch + garbage-collect + optimise store"
+    nixos-update
+    ${pkgs.coreutils}/bin/echo "==> Collecting garbage (delete old generations)..."
+    sudo ${pkgs.nix}/bin/nix-collect-garbage -d
+    ${pkgs.coreutils}/bin/echo "==> Optimising nix store (dedupe)..."
+    sudo ${pkgs.nix}/bin/nix-store --optimise
+  '';
+
+  nixosMaintain = pkgs.writeShellScriptBin "nixos-maintain" ''
+    set -euo pipefail
+    ${pkgs.coreutils}/bin/echo "==> Maintenance: optimise store + vacuum journal"
+    sudo ${pkgs.nix}/bin/nix-store --optimise
+    # Keep logs tidy (safe; adjust time if you want)
+    sudo ${pkgs.systemd}/bin/journalctl --vacuum-time=14d >/dev/null || true
+    ${pkgs.coreutils}/bin/echo "==> Done."
+  '';
+
+  nixosSafeUpgrade = pkgs.writeShellScriptBin "nixos-safe-upgrade" ''
+    set -euo pipefail
+
+    yes=0
+    if [[ "''${1-}" == "-y" || "''${1-}" == "--yes" ]]; then
+      yes=1
+    fi
+
+    echo "==> Safe full upgrade for: ${flakeRef}"
+    echo "==> Step 1/4: Updating flake.lock in ${flakeDir}..."
+    sudo ${pkgs.nix}/bin/nix flake update --flake "${flakeDir}"
+
+    echo "==> Step 2/4: Running flake checks (can take a bit)..."
+    ${pkgs.nix}/bin/nix flake check "${flakeDir}"
+
+    tmp="$(${pkgs.coreutils}/bin/mktemp -d -t nixos-safe-upgrade.XXXXXXXX)"
+    out="$tmp/result"
+    trap '${pkgs.coreutils}/bin/rm -rf "$tmp"' EXIT
+
+    echo "==> Step 3/4: Building new system (no switch yet)..."
+    sudo ${pkgs.nixos-rebuild}/bin/nixos-rebuild build --flake "${flakeRef}" --out-link "$out"
+
+    if [[ -e /run/current-system ]]; then
+      echo "==> Diff (current -> new):"
+      ${pkgs.nvd}/bin/nvd diff /run/current-system "$out" || true
+    fi
+
+    if [[ "$yes" -eq 0 ]]; then
+      echo
+      read -r -p "Switch to the new generation now? [y/N] " reply
+      if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+        echo "==> Not switching. Build output is at: $out"
+        echo "    To switch later: sudo nixos-rebuild switch --flake \"${flakeRef}\""
+        exit 0
+      fi
+    fi
+
+    echo "==> Step 4/4: Switching to the new generation..."
+    sudo ${pkgs.nixos-rebuild}/bin/nixos-rebuild switch --flake "${flakeRef}"
+
+    echo "==> Post-upgrade cleanup: garbage-collect + optimise + vacuum journal"
+    sudo ${pkgs.nix}/bin/nix-collect-garbage -d
+    sudo ${pkgs.nix}/bin/nix-store --optimise
+    sudo ${pkgs.systemd}/bin/journalctl --vacuum-time=14d >/dev/null || true
+
+    echo "==> Done."
+  '';
+
   # Easy lists to extend
   userApps = with pkgs; [
     google-chrome
@@ -104,6 +208,8 @@ let
 
     # Prompt/theme
     zsh-powerlevel10k
+    fastfetch
+    nvd
 
     # Used by the sandbox launcher
     nix
@@ -129,7 +235,7 @@ in
     userApps
     ++ userFonts
     ++ userCli
-    ++ [ teamviewerSandbox ];
+    ++ [ teamviewerSandbox nixosFlakeUpdate nixosRebuildSwitch nixosRebuildTest nixosRebuildBoot nixosUpdate nixosUpgrade nixosMaintain nixosSafeUpgrade ];
 
   # Git
   programs.git = {
@@ -184,48 +290,87 @@ in
       ignoreSpace = true;
     };
 
-    shellAliases = {
-      # NixOS flake workflow
-      rebuild = "sudo nixos-rebuild switch --flake \"${flakeRef}\"";
-      update  = "sudo nix flake update --flake /etc/nixos && sudo nixos-rebuild switch --flake \"${flakeRef}\"";
-      upgrade = "sudo nix flake update --flake /etc/nixos && sudo nixos-rebuild switch --flake \"${flakeRef}\" && sudo nix-collect-garbage -d";
 
-      gc    = "sudo nix-collect-garbage -d";
-      gens  = "sudo nix-env --list-generations --profile /nix/var/nix/profiles/system && home-manager generations";
-      sysrb = "sudo nixos-rebuild switch --rollback";
-      hmrb  = "home-manager rollback";
+shellAliases = {
+  # ----------------------------
+  # NixOS + Flakes + Home Manager (integrated)
+  # ----------------------------
+  # Daily workflow
+  rebuild = "nixos-switch";
+  test    = "nixos-test";
+  boot    = "nixos-boot";
 
-      # HM alone (only if you use HM standalone)
-      hm = "home-manager switch --flake \"${flakeRef}\"";
+  # Short forms
+  rb  = "nixos-switch";
+  rbt = "nixos-test";
+  rbb = "nixos-boot";
 
-      # TeamViewer
-      tv = "teamviewer-sandbox";
+  # Flake maintenance
+  fu       = "nixos-flake-update";   # update flake.lock only
+  update   = "nixos-update";         # flake update + switch
+  upgrade  = "nixos-upgrade";        # update + switch + GC + optimise store
+  maintain = "nixos-maintain";       # optimise store + vacuum journal
+  safe-upgrade = "nixos-safe-upgrade";   # update + check + build + diff + prompt + switch
+  sup         = "nixos-safe-upgrade";   # short
 
-      # Git
-      g   = "git";
-      gst = "git status";
-      gpl = "git pull";
-      gps = "git push";
-      gcm = "git commit -m";
-      gco = "git checkout";
+  # Inspect / debug
+  flake      = "nix flake show /etc/nixos";
+  flakecheck = "nix flake check /etc/nixos";
+  flakemeta  = "nix flake metadata /etc/nixos";
+  cfg        = "cd /etc/nixos";
+  edit       = "cd /etc/nixos && $EDITOR .";
 
-      # Modern CLI
-      ls   = "eza --icons";
-      ll   = "eza -la --icons --git";
-      cat  = "bat";
-      grep = "rg";
-      find = "fd";
+  # Generations / rollback
+  gens   = "sudo nix-env --list-generations --profile /nix/var/nix/profiles/system && home-manager generations";
+  hmgen  = "home-manager generations";
+  sysrb  = "sudo nixos-rebuild switch --rollback";
 
-      # Safety
-      rm = "rm -i";
-      cp = "cp -i";
-      mv = "mv -i";
+  # Storage / garbage collection (manual)
+  gc      = "sudo nix-collect-garbage -d";
+  optimise = "sudo nix-store --optimise";
+  verify  = "sudo nix-store --verify --check-contents"; # can take a while
 
-      # Convenience
-      ".." = "cd ..";
-      c = "clear";
-      h = "history";
-    };
+  # ----------------------------
+  # TeamViewer (sandbox)
+  # ----------------------------
+  tv = "teamviewer-sandbox";
+
+  # ----------------------------
+  # Git shortcuts
+  # ----------------------------
+  g   = "git";
+  gst = "git status";
+  gpl = "git pull";
+  gps = "git push";
+  gcm = "git commit -m";
+  gco = "git checkout";
+
+  # ----------------------------
+  # Modern CLI + convenience
+  # ----------------------------
+  ls   = "eza --icons";
+  ll   = "eza -la --icons --git";
+  la   = "eza -a";
+  lt   = "eza --tree";
+  cat  = "bat";
+  grep = "rg";
+  find = "fd";
+
+  # Safety
+  rm = "rm -i";
+  cp = "cp -i";
+  mv = "mv -i";
+
+  # Convenience
+  ".." = "cd ..";
+  c = "clear";
+  h = "history";
+
+  # Fastfetch (neofetch replacement)
+  ff = "fastfetch --config ${config.xdg.configHome}/fastfetch/config.jsonc";
+  nf = "fastfetch --config ${config.xdg.configHome}/fastfetch/config.jsonc";
+  neofetch = "fastfetch --config ${config.xdg.configHome}/fastfetch/config.jsonc";
+};
 
     oh-my-zsh = {
       enable = true;
