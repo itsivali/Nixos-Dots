@@ -18,6 +18,7 @@ let
     # Cloud
     azure-cli
     awscli2
+    google-cloud-sdk
 
     # CI/CD
     git
