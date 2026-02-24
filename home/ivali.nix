@@ -116,52 +116,60 @@ let
   '';
 
   nixosSafeUpgrade = pkgs.writeShellScriptBin "nixos-safe-upgrade" ''
-    set -euo pipefail
+  set -euo pipefail
 
-    yes=0
-    if [[ "''${1-}" == "-y" || "''${1-}" == "--yes" ]]; then
-      yes=1
+  yes=0
+  if [[ "''${1-}" == "-y" || "''${1-}" == "--yes" ]]; then
+    yes=1
+  fi
+
+  echo "==> Safe full upgrade for: ${flakeRef}"
+  echo "==> Step 1/4: Updating flake.lock in ${flakeDir}..."
+  sudo ${pkgs.nix}/bin/nix flake update --flake "${flakeDir}" --accept-flake-config
+
+  echo "==> Step 2/4: Running flake checks (can take a bit)..."
+  ${pkgs.nix}/bin/nix flake check "${flakeDir}" --accept-flake-config
+
+  tmp="$(${pkgs.coreutils}/bin/mktemp -d -t nixos-safe-upgrade.XXXXXXXX)"
+  out="$tmp/result"
+  trap '${pkgs.coreutils}/bin/rm -rf "$tmp"' EXIT
+
+  echo "==> Step 3/4: Building new system (no switch yet)..."
+  ${pkgs.nix}/bin/nix build \
+    "${flakeDir}#nixosConfigurations.prague.config.system.build.toplevel" \
+    --out-link "$out" \
+    --accept-flake-config
+
+  storePath="$(${pkgs.coreutils}/bin/readlink -f "$out")"
+
+  if [[ -e /run/current-system ]]; then
+    echo "==> Diff (current -> new):"
+    ${pkgs.nvd}/bin/nvd diff /run/current-system "$storePath" || true
+  fi
+
+  if [[ "$yes" -eq 0 ]]; then
+    echo
+    read -r -p "Switch to the new generation now? [y/N] " reply
+    if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+      echo "==> Not switching."
+      echo "==> Build out-link kept at: $out"
+      echo "    To switch later:"
+      echo "    sudo nixos-rebuild switch --flake \"${flakeRef}\" --store-path \"$storePath\""
+      trap - EXIT
+      exit 0
     fi
+  fi
 
-    echo "==> Safe full upgrade for: ${flakeRef}"
-    echo "==> Step 1/4: Updating flake.lock in ${flakeDir}..."
-    sudo ${pkgs.nix}/bin/nix flake update --flake "${flakeDir}"
+  echo "==> Step 4/4: Switching to the new generation..."
+  sudo ${pkgs.nixos-rebuild}/bin/nixos-rebuild switch --flake "${flakeRef}" --store-path "$storePath"
 
-    echo "==> Step 2/4: Running flake checks (can take a bit)..."
-    ${pkgs.nix}/bin/nix flake check "${flakeDir}"
+  echo "==> Post-upgrade cleanup: garbage-collect + optimise + vacuum journal"
+  sudo ${pkgs.nix}/bin/nix-collect-garbage -d
+  sudo ${pkgs.nix}/bin/nix-store --optimise
+  sudo ${pkgs.systemd}/bin/journalctl --vacuum-time=14d >/dev/null || true
 
-    tmp="$(${pkgs.coreutils}/bin/mktemp -d -t nixos-safe-upgrade.XXXXXXXX)"
-    out="$tmp/result"
-    trap '${pkgs.coreutils}/bin/rm -rf "$tmp"' EXIT
-
-    echo "==> Step 3/4: Building new system (no switch yet)..."
-    sudo ${pkgs.nixos-rebuild}/bin/nixos-rebuild build --flake "${flakeRef}" --out-link "$out"
-
-    if [[ -e /run/current-system ]]; then
-      echo "==> Diff (current -> new):"
-      ${pkgs.nvd}/bin/nvd diff /run/current-system "$out" || true
-    fi
-
-    if [[ "$yes" -eq 0 ]]; then
-      echo
-      read -r -p "Switch to the new generation now? [y/N] " reply
-      if [[ ! "$reply" =~ ^[Yy]$ ]]; then
-        echo "==> Not switching. Build output is at: $out"
-        echo "    To switch later: sudo nixos-rebuild switch --flake \"${flakeRef}\""
-        exit 0
-      fi
-    fi
-
-    echo "==> Step 4/4: Switching to the new generation..."
-    sudo ${pkgs.nixos-rebuild}/bin/nixos-rebuild switch --flake "${flakeRef}"
-
-    echo "==> Post-upgrade cleanup: garbage-collect + optimise + vacuum journal"
-    sudo ${pkgs.nix}/bin/nix-collect-garbage -d
-    sudo ${pkgs.nix}/bin/nix-store --optimise
-    sudo ${pkgs.systemd}/bin/journalctl --vacuum-time=14d >/dev/null || true
-
-    echo "==> Done."
-  '';
+  echo "==> Done."
+'';
 
   # Easy lists to extend
   userApps = with pkgs; [
@@ -412,4 +420,3 @@ shellAliases = {
     ];
   };
 }
-
