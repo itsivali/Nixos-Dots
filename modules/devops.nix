@@ -1,60 +1,35 @@
 { config, pkgs, lib, ... }:
 
-let
-  devopsPackages = with pkgs; [
-    # Containers
-    docker
-    docker-compose
+{
+  environment.systemPackages = with pkgs; [
+    # IaC
+    terraform
+    terraform-ls
+    packer
+    ansible
 
     # Kubernetes
     kubectl
     kubernetes-helm
     k9s
+    kustomize
+    kubectx
 
-    # Infrastructure as Code
-    terraform
-    terraform-ls
-
-    # Cloud
+    # Cloud CLIs
     azure-cli
     awscli2
     google-cloud-sdk
 
-    # CI/CD
-    git
-    gh
+    # Secrets
+    sops
+    age
 
-    # Observability
-    prometheus
-    grafana
-    fluentd
-    fluent-bit
-    netdata
-
-    # Networking / Debugging
-    curl
-    wget
-    jq
-    yq
-    htop
+    # Network debugging
+    dig
+    traceroute
+    whois
+    inetutils
+    netcat
+    httpie
   ];
-in
-{
-  environment.systemPackages = devopsPackages;
-
-  # Enable Docker properly
-  virtualisation.docker = {
-    enable = true;
-    enableOnBoot = true;
-  };
-
-  users.users.ivali.extraGroups = [ "docker" ];
-
-
-  programs.bash.completion.enable = true;
-
-  # Recommended for dev machines
-  nix.settings = {
-    experimental-features = [ "nix-command" "flakes" ];
-  };
 }

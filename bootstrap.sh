@@ -1,190 +1,113 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+FLAKE_HOST="prague"
+REPO_DEFAULT="$HOME/Nixos-Dots"
+MODE="${MODE:-link}" # link (default) or copy
 
+# Only enable flakes here. Any download/network tuning must be in NixOS:
+#   nix.settings = { ... }
+NIX_FEATURES=$'experimental-features = nix-command flakes\n'
 
-# --------- Config (override via env vars) ----------
-REPO_HTTPS="${REPO_HTTPS:-https://github.com/itsivali/Nixos-Dots}"
-REPO_SSH="${REPO_SSH:-git@github.com:itsivali/Nixos-Dots.git}"
-BRANCH="${BRANCH:-main}"
+die()  { echo "ERROR: $*" >&2; exit 1; }
+info() { echo "==> $*" >&2; }
 
-DEST_DIR="${DEST_DIR:-$HOME/Nixos-Dots}"
-
-# Recommended option: keep /etc/nixos as a symlink to your HOME repo
-LINK_ETC_NIXOS="${LINK_ETC_NIXOS:-1}"
-
-# Detect host automatically (works if flake uses hostname as config name)
-AUTO_HOST="$(hostname -s 2>/dev/null || true)"
-FLAKE_HOST="${FLAKE_HOST:-${AUTO_HOST:-prague}}"
-
-GIT_NAME="${GIT_NAME:-Willis Ivali}"
-GIT_EMAIL="${GIT_EMAIL:-itsivali@outlook.com}"
-
-# --------- Helpers ----------
-die() { echo "ERROR: $*" >&2; exit 1; }
-info() { echo "==> $*"; }
-
-
-if [[ "$(pwd -P 2>/dev/null || true)" == "/etc/nixos"* ]]; then
-  cd "$HOME"
-fi
-
-# Must not run as root
 [[ "$(id -u)" -ne 0 ]] || die "Run as your normal user (not root)."
-
 command -v sudo >/dev/null 2>&1 || die "sudo not found."
-command -v nix  >/dev/null 2>&1 || die "nix not found (are you on NixOS?)."
-
+command -v nix  >/dev/null 2>&1 || die "nix not found."
 
 sudo -v
 
-info "Enabling flakes (nix-command + flakes)..."
-sudo mkdir -p /etc/nix
-if [[ ! -f /etc/nix/nix.conf ]]; then
-  echo "experimental-features = nix-command flakes" | sudo tee /etc/nix/nix.conf >/dev/null
+# Ensure user nix.conf enables flakes and DOES NOT include restricted daemon settings
+NIX_CONF_DIR="$HOME/.config/nix"
+NIX_CONF_FILE="$NIX_CONF_DIR/nix.conf"
+mkdir -p "$NIX_CONF_DIR"
+touch "$NIX_CONF_FILE"
+
+# Remove restricted settings if present (these cause: 'ignored ... because it is a restricted setting')
+# Keep this list conservative; you can add more if needed.
+for k in download-attempts http-connections http2 narinfo-cache-negative-ttl connect-timeout; do
+  # delete lines like: key = value
+  sed -i -E "/^[[:space:]]*${k}[[:space:]]*=.*$/d" "$NIX_CONF_FILE"
+done
+
+# Ensure experimental-features is set (replace if exists, otherwise append)
+if grep -qE '^[[:space:]]*experimental-features[[:space:]]*=' "$NIX_CONF_FILE"; then
+  sed -i -E 's/^[[:space:]]*experimental-features[[:space:]]*=.*$/experimental-features = nix-command flakes/' "$NIX_CONF_FILE"
 else
-  if ! grep -q '^experimental-features' /etc/nix/nix.conf; then
-    echo "experimental-features = nix-command flakes" | sudo tee -a /etc/nix/nix.conf >/dev/null
-  elif ! grep -q 'nix-command' /etc/nix/nix.conf || ! grep -q 'flakes' /etc/nix/nix.conf; then
-    sudo sed -i 's/^experimental-features *=.*/experimental-features = nix-command flakes/' /etc/nix/nix.conf
-  fi
-fi
-export NIX_CONFIG="${NIX_CONFIG:-} experimental-features = nix-command flakes"
-
-info "Ensuring basic tools exist (git, ssh)..."
-need_pkgs=()
-command -v git >/dev/null 2>&1 || need_pkgs+=("nixpkgs#git")
-command -v ssh >/dev/null 2>&1 || need_pkgs+=("nixpkgs#openssh")
-command -v ssh-keygen >/dev/null 2>&1 || need_pkgs+=("nixpkgs#openssh")
-if (( ${#need_pkgs[@]} > 0 )); then
-  nix profile install "${need_pkgs[@]}"
+  printf "%s" "$NIX_FEATURES" >> "$NIX_CONF_FILE"
 fi
 
-info "Capturing THIS machine's hardware-configuration.nix..."
-HW_SRC="/etc/nixos/hardware-configuration.nix"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_DIR="${1:-$REPO_DEFAULT}"
+[[ -f "$SCRIPT_DIR/flake.nix" ]] && REPO_DIR="$SCRIPT_DIR"
+
+[[ -d "$REPO_DIR" ]] || die "Repo dir not found: $REPO_DIR"
+[[ -f "$REPO_DIR/flake.nix" ]] || die "flake.nix not found in: $REPO_DIR"
+
+# Generate current machine hardware config
 HW_TMP="$(mktemp -t hardware-configuration.nix.XXXXXX)"
-cleanup() { rm -f "$HW_TMP" || true; }
-trap cleanup EXIT
+trap 'rm -f "$HW_TMP" || true' EXIT
 
-if [[ -f "$HW_SRC" ]]; then
-  sudo cp -f "$HW_SRC" "$HW_TMP"
-else
-  info "hardware-configuration.nix not found in /etc/nixos; generating..."
-  sudo nixos-generate-config
-  [[ -f "$HW_SRC" ]] || die "Failed to generate $HW_SRC"
-  sudo cp -f "$HW_SRC" "$HW_TMP"
+info "Generating current machine hardware-configuration.nix..."
+sudo nixos-generate-config --show-hardware-config > "$HW_TMP"
+[[ -s "$HW_TMP" ]] || die "Failed to generate hardware-configuration.nix"
+
+# Backup /etc/nixos
+TS="$(date +%Y%m%d-%H%M%S)"
+BACKUP="/etc/nixos.backup-$TS"
+if [[ -e /etc/nixos || -L /etc/nixos ]]; then
+  info "Backing up /etc/nixos -> $BACKUP"
+  sudo mv /etc/nixos "$BACKUP"
 fi
 
-info "Cloning/updating repo into: $DEST_DIR"
-if [[ -d "$DEST_DIR/.git" ]]; then
-  # Safety: do not overwrite local work
-  if ! git -C "$DEST_DIR" diff --quiet || ! git -C "$DEST_DIR" diff --cached --quiet; then
-    info "Repo has local changes; skipping pull for safety."
-    info "You can review with: cd '$DEST_DIR' && git status"
+if [[ "$MODE" == "copy" ]]; then
+  info "MODE=copy: copying repo into /etc/nixos"
+  sudo mkdir -p /etc/nixos
+  if command -v rsync >/dev/null 2>&1; then
+    sudo rsync -a --delete \
+      --exclude '.git/' \
+      --exclude '.github/' \
+      --exclude '.direnv/' \
+      --exclude 'result' \
+      --exclude 'result-*' \
+      --exclude '*.swp' \
+      --exclude '.DS_Store' \
+      "$REPO_DIR/" /etc/nixos/
   else
-    git -C "$DEST_DIR" fetch --all --prune
-    git -C "$DEST_DIR" checkout "$BRANCH" >/dev/null 2>&1 || true
-    git -C "$DEST_DIR" pull --ff-only || true
+    nix --extra-experimental-features "nix-command flakes" \
+      shell nixpkgs#rsync -c sudo rsync -a --delete "$REPO_DIR/" /etc/nixos/
   fi
+  install -m 0644 "$HW_TMP" "$REPO_DIR/hardware-configuration.nix"
 else
-  mkdir -p "$(dirname "$DEST_DIR")"
-  git clone --branch "$BRANCH" "$REPO_HTTPS" "$DEST_DIR"
+  info "MODE=link: linking /etc/nixos -> $REPO_DIR"
+  sudo ln -sfn "$REPO_DIR" /etc/nixos
+  install -m 0644 "$HW_TMP" "$REPO_DIR/hardware-configuration.nix"
 fi
 
-info "Writing hardware-configuration.nix into repo..."
-cp -f "$HW_TMP" "$DEST_DIR/hardware-configuration.nix"
-
-# Git safety (especially if /etc/nixos links here)
-git config --global --add safe.directory "$DEST_DIR" >/dev/null 2>&1 || true
-git -C "$DEST_DIR" config user.name  "$GIT_NAME"  >/dev/null 2>&1 || true
-git -C "$DEST_DIR" config user.email "$GIT_EMAIL" >/dev/null 2>&1 || true
-
-if [[ "$LINK_ETC_NIXOS" == "1" ]]; then
-  info "Linking /etc/nixos -> $DEST_DIR (safe swap)..."
-  # Never rm -rf a live directory. If /etc/nixos is a real dir, back it up once.
-  if [[ -e /etc/nixos && ! -L /etc/nixos ]]; then
-    TS="$(date +%Y%m%d-%H%M%S)"
-    BACKUP="/etc/nixos.backup-$TS"
-    info "/etc/nixos is a directory; backing up to $BACKUP"
-    sudo mv /etc/nixos "$BACKUP"
-  fi
-
-  # Atomic symlink update (safe even if /etc/nixos exists as symlink)
-  sudo mkdir -p /etc
-  sudo ln -sfn "$DEST_DIR" /etc/nixos
-  sudo chown -h root:root /etc/nixos
-fi
-
-info "Setting up GitHub push via SSH..."
-mkdir -p "$HOME/.ssh"
-chmod 700 "$HOME/.ssh"
-
-KEY="$HOME/.ssh/id_ed25519"
-PUB="$KEY.pub"
-
-if [[ ! -f "$KEY" ]]; then
-  ssh-keygen -t ed25519 -C "$GIT_EMAIL" -f "$KEY" -N ""
-fi
-
-# Start agent if needed (best-effort)
-if [[ -z "${SSH_AUTH_SOCK:-}" ]]; then
-  eval "$(ssh-agent -s)" >/dev/null || true
-fi
-ssh-add "$KEY" >/dev/null 2>&1 || true
-
-# Ensure origin uses SSH (so push works without tokens)
-if git -C "$DEST_DIR" remote get-url origin >/dev/null 2>&1; then
-  git -C "$DEST_DIR" remote set-url origin "$REPO_SSH" || true
-else
-  git -C "$DEST_DIR" remote add origin "$REPO_SSH" || true
-fi
-
-echo ""
-info "Your GitHub SSH public key (add to GitHub -> Settings -> SSH keys):"
-echo "--------------------------------------------------------------------------"
-cat "$PUB"
-echo "--------------------------------------------------------------------------"
-echo ""
-
-info "Creating handy commands in ~/.local/bin (work from anywhere)..."
+# Install helper: ~/.local/bin/rebuild (always uses HOME repo)
+info "Installing helper: ~/.local/bin/rebuild"
 mkdir -p "$HOME/.local/bin"
-
-cat > "$HOME/.local/bin/nxswitch" <<EOF
+cat > "$HOME/.local/bin/rebuild" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-sudo nixos-rebuild switch --flake "$DEST_DIR#$FLAKE_HOST"
+exec sudo env NIX_CONFIG=\$'experimental-features = nix-command flakes\n' \
+  nixos-rebuild switch --flake "${REPO_DIR}#${FLAKE_HOST}" --accept-flake-config "\$@"
 EOF
+chmod +x "$HOME/.local/bin/rebuild"
 
-cat > "$HOME/.local/bin/nxupdate" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-nix flake update "$DEST_DIR"
-sudo nixos-rebuild switch --flake "$DEST_DIR#$FLAKE_HOST"
-EOF
-
-cat > "$HOME/.local/bin/nxedit" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-exec \${EDITOR:-nano} "$DEST_DIR"
-EOF
-
-chmod +x "$HOME/.local/bin/"{nxswitch,nxupdate,nxedit}
-
-# Make sure ~/.local/bin is on PATH for future sessions
-if ! grep -qs 'export PATH="\$HOME/.local/bin:\$PATH"' "$HOME/.profile" 2>/dev/null; then
+grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.profile" 2>/dev/null || \
   echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.profile"
-fi
-export PATH="$HOME/.local/bin:$PATH"
 
-info "Rebuilding using flake from HOME: $DEST_DIR#$FLAKE_HOST"
-cd "$HOME"
-sudo nixos-rebuild switch --flake "$DEST_DIR#$FLAKE_HOST"
+info "Rebuilding from repo: ${REPO_DIR}#${FLAKE_HOST}"
+sudo env NIX_CONFIG="$NIX_FEATURES" \
+  nixos-rebuild switch --flake "${REPO_DIR}#${FLAKE_HOST}" --accept-flake-config
 
 echo ""
 echo "✅ Done."
-echo "Next:"
-echo "  - Rebuild anytime: nxswitch"
-echo "  - Update inputs + rebuild: nxupdate"
-echo "  - Edit config: nxedit"
-echo "  - Push changes: cd '$DEST_DIR' && git status && git push"
-
+echo "Repo:          $REPO_DIR"
+echo "/etc/nixos:     $(readlink -f /etc/nixos || true)"
+echo "Backup (old):  $BACKUP"
+echo "Try anywhere:  rebuild"
+echo ""
+echo "Tip: if you exported NIX_CONFIG in your shell ранее, run: unset NIX_CONFIG"

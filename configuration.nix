@@ -1,9 +1,67 @@
-# /etc/nixos/configuration.nix
+# configuration.nix
+# Host: prague (GNOME workstation, web-dev + devops handled by modules/* and home/*)
 { config, pkgs, lib, ... }:
 
+let
+  nightlyRebuildScript = pkgs.writeShellScript "nixos-nightly-rebuild" ''
+    set -euo pipefail
+
+    export NIX_CONFIG="experimental-features = nix-command flakes
+http-connections = 2
+http2 = false
+connect-timeout = 60
+download-attempts = 200
+narinfo-cache-negative-ttl = 0
+"
+
+    echo "==> [nightly] $(date -Is) nixos-rebuild switch /etc/nixos#prague"
+    exec ${pkgs.util-linux}/bin/flock -n /run/nixos-nightly-rebuild.lock \
+      ${pkgs.nixos-rebuild}/bin/nixos-rebuild switch \
+        --flake /etc/nixos#prague \
+        --accept-flake-config
+  '';
+in
 {
   ############################################################
-  # BOOT CONFIGURATION
+  # IMPORTS (hardware is machine-specific)
+  ############################################################
+  imports = [
+    ./hardware-configuration.nix
+  ];
+
+  ############################################################
+  # NIXPKGS / OVERLAYS
+  ############################################################
+  nixpkgs = {
+    config.allowUnfree = true;
+
+    overlays = [
+      # Fix: picosvg tests failing (nanoemoji->gftools->fonts->HM)
+      (final: prev: {
+        python3 = prev.python3.override {
+          packageOverrides = pyFinal: pyPrev: {
+            picosvg = pyPrev.picosvg.overridePythonAttrs (_old: {
+              doCheck = false;
+            });
+          };
+        };
+        python3Packages = final.python3.pkgs;
+      })
+
+      # Fix: azure-cli install check sometimes fails
+      (final: prev: {
+        azure-cli = prev.azure-cli.overrideAttrs (_old: {
+          doCheck = false;
+          doInstallCheck = false;
+          checkPhase = "true";
+          installCheckPhase = "true";
+        });
+      })
+    ];
+  };
+
+  ############################################################
+  # BOOT / KERNEL
   ############################################################
   boot = {
     loader = {
@@ -16,39 +74,25 @@
     kernelModules = [ "kvm-amd" ];
     tmp.cleanOnBoot = true;
 
-    # Desktop responsiveness + sane VM behavior
+    # Performance sysctls (security sysctls live in modules/security.nix)
     kernel.sysctl = {
       "vm.swappiness" = 10;
       "vm.vfs_cache_pressure" = 50;
 
-      # Reduce latency spikes on desktop workloads
       "vm.dirty_background_ratio" = 5;
       "vm.dirty_ratio" = 20;
       "vm.page-cluster" = 0;
 
       "kernel.nmi_watchdog" = 0;
 
+      # Desktop responsiveness under load
       "kernel.sched_autogroup_enabled" = 1;
       "kernel.sched_migration_cost_ns" = 5000000;
     };
   };
 
   ############################################################
-  # DISK ENCRYPTION (LUKS)
-  #
-  # NOTE:
-  # - You DO NOT put the passphrase in configuration.nix.
-  # - LUKS is enabled in /etc/nixos/hardware-configuration.nix
-  ############################################################
-  # Example (ONLY if your install is already LUKS):
-  #
-  # boot.initrd.luks.devices."cryptroot" = {
-  #   device = "/dev/disk/by-uuid/XXXX-XXXX";
-  #   allowDiscards = true;
-  # };
-
-  ############################################################
-  # PERFORMANCE — ULTRA PEAK MODE (24.11 SAFE)
+  # PERFORMANCE
   ############################################################
   zramSwap = {
     enable = true;
@@ -63,11 +107,8 @@
 
   powerManagement.enable = true;
   services.power-profiles-daemon.enable = true;
-
-  # Workstation-first defaults (snappier at the cost of some power usage)
   powerManagement.cpuFreqGovernor = lib.mkDefault "performance";
 
-  # AMD CPU microcode
   hardware.cpu.amd.updateMicrocode = true;
 
   ############################################################
@@ -77,7 +118,7 @@
     hostName = "prague";
     networkmanager.enable = true;
     timeServers = [ "time.cloudflare.com" "time.google.com" ];
-    firewall.enable = true;
+    # Firewall rules/ports are defined in modules/security.nix (closed by default)
   };
 
   ############################################################
@@ -101,51 +142,42 @@
   };
 
   ############################################################
-  # GNOME — ULTRA FAST MODE
+  # GNOME (workstation)
   ############################################################
   services.dbus.implementation = "broker";
 
   services.xserver = {
     enable = true;
-    xkb = {
-      layout = "us";
-      variant = "";
-    };
+    xkb = { layout = "us"; variant = ""; };
   };
 
   services.displayManager.gdm.enable = true;
   services.displayManager.gdm.wayland = true;
   services.desktopManager.gnome.enable = true;
 
-  # Disable optional background daemons that can wake up GNOME.
-  services.geoclue2.enable = lib.mkForce false;   # Location services / automatic timezone
-  services.avahi.enable = lib.mkForce false;      # mDNS/.local discovery
+  # Trim background services you don't need on a dev workstation
+  services.geoclue2.enable = lib.mkForce false;
+  services.avahi.enable = lib.mkForce false;
+
   services.gnome = {
-    # Install GNOME's core apps (Settings, Files, etc.)
     core-apps.enable = true;
 
-    # Big performance wins: disable local content indexing (Tracker/TinySPARQL + LocalSearch).
-    # Search still works for apps/settings, but not full file *content* indexing.
+    # Disable GNOME content indexing/search services
     tinysparql.enable = lib.mkForce false;
     localsearch.enable = lib.mkForce false;
 
-    # Keep everyday GNOME features working, but disable optional background services.
-    gnome-software.enable = lib.mkForce false;         # GNOME Software background update checks
-    gnome-user-share.enable = lib.mkForce false;       # WebDAV sharing + related daemons
-    rygel.enable = lib.mkForce false;                  # UPnP/DLNA media server
-    gnome-remote-desktop.enable = lib.mkForce false;   # GNOME Remote Desktop (RDP/VNC)
+    # Remove/disable GUI software center and sharing services
+    gnome-software.enable = lib.mkForce false;
+    gnome-user-share.enable = lib.mkForce false;
+    rygel.enable = lib.mkForce false;
+    gnome-remote-desktop.enable = lib.mkForce false;
 
-    # Optional apps
     games.enable = lib.mkForce false;
   };
-
-
-
 
   services.packagekit.enable = false;
 
   environment.sessionVariables = {
-    # Prefer native Wayland where possible (smoother + less XWayland overhead)
     NIXOS_OZONE_WL = "1";
     ELECTRON_OZONE_PLATFORM_HINT = "auto";
     MUTTER_DEBUG_FORCE_KMS_MODE = "1";
@@ -173,10 +205,9 @@
   systemd.user.extraConfig = ''
     DefaultTimeoutStopSec=3s
   '';
-  
 
   ############################################################
-  # AUDIO — PIPEWIRE MODERN STACK
+  # AUDIO — PIPEWIRE
   ############################################################
   services.pulseaudio.enable = false;
   security.rtkit.enable = true;
@@ -199,8 +230,8 @@
       "networkmanager"
       "wheel"
       "docker"
-      "wireshark"
       "podman"
+      "wireshark"
       "audio"
       "video"
     ];
@@ -208,16 +239,15 @@
   };
 
   ############################################################
-  # WIRESHARK — FIX CAPTURE PERMISSIONS ON NixOS
+  # WIRESHARK
   ############################################################
   programs.wireshark = {
     enable = true;
     package = pkgs.wireshark;
   };
 
-
   ############################################################
-  # ZSH (System-level; HM handles most of your Zsh setup)
+  # ZSH (system-level)
   ############################################################
   programs.zsh = {
     enable = true;
@@ -225,74 +255,15 @@
   };
 
   ############################################################
-  # SYSTEM PACKAGES (includes Home Manager CLI)
+  # TESTING SERVICES DEFAULTS (opt-in; actual logic in modules/testing.nix)
   ############################################################
-  environment.systemPackages = with pkgs; [
-    # Core tools
-    vim wget curl git htop btop killall unzip zip file tree
-    
-    gcc
-    gnumake
-    nodejs
-    docker-compose
-
-    # Capability tools (for getcap/setcap checks)
-    libcap
-
-    # Home Manager CLI
-    home-manager
-  ];
-
-  ############################################################
-  # CONTAINERS — DOCKER + PODMAN
-  ############################################################
-  virtualisation.docker = {
-    enable = true;
-    enableOnBoot = true;
-
-    autoPrune = {
-      enable = true;
-      dates = "weekly";
-    };
-
-    storageDriver = "overlay2";
-
-    daemon.settings = {
-      exec-opts = [ "native.cgroupdriver=systemd" ];
-
-      log-driver = "json-file";
-      log-opts = {
-        max-size = "10m";
-        max-file = "3";
-      };
-
-      storage-driver = "overlay2";
-    };
+  testing = {
+    enable = false;
+    openFirewall = false;
   };
 
-  systemd.services.docker = {
-    after = [ "network-online.target" "firewall.service" ];
-    wants = [ "network-online.target" ];
-
-    serviceConfig = {
-      Restart = "on-failure";
-      RestartSec = "5s";
-      TimeoutStartSec = "0";
-      TimeoutStopSec = "120s";
-      KillMode = "process";
-      Delegate = "yes";
-    };
-  };
-
-  systemd.sockets.docker = {
-    wantedBy = [ "sockets.target" ];
-  };
-  
-
-  virtualisation.podman.enable = true;
-
   ############################################################
-  # NIX SETTINGS
+  # NIX SETTINGS — flakes + download tuning
   ############################################################
   nix = {
     settings = {
@@ -311,6 +282,12 @@
         "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
         "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
       ];
+
+      http-connections = 2;
+      http2 = false;
+      connect-timeout = 60;
+      download-attempts = 200;
+      narinfo-cache-negative-ttl = 0;
     };
 
     gc = {
@@ -320,7 +297,40 @@
     };
   };
 
-  nixpkgs.config.allowUnfree = true;
+  ############################################################
+  # NIGHTLY AUTO-REBUILD (optional)
+  ############################################################
+  systemd.services.nixos-nightly-rebuild = {
+    description = "Nightly NixOS rebuild (flake /etc/nixos#prague)";
+    wants = [ "network-online.target" ];
+    after = [ "network-online.target" ];
+
+    serviceConfig = {
+      Type = "oneshot";
+      User = "root";
+      ExecStart = nightlyRebuildScript;
+
+      Nice = 10;
+      IOSchedulingClass = "best-effort";
+      IOSchedulingPriority = 7;
+
+      TimeoutStartSec = "6h";
+      StandardOutput = "journal";
+      StandardError = "journal";
+    };
+  };
+
+  systemd.timers.nixos-nightly-rebuild = {
+    description = "Run nightly NixOS rebuild";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "*-*-* 02:30:00";
+      RandomizedDelaySec = "45m";
+      Persistent = true;
+      AccuracySec = "5m";
+      Unit = "nixos-nightly-rebuild.service";
+    };
+  };
 
   ############################################################
   # SYSTEM SERVICES
@@ -335,4 +345,3 @@
   ############################################################
   system.stateVersion = "25.11";
 }
-

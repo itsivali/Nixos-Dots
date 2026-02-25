@@ -1,9 +1,10 @@
 { config, pkgs, lib, ... }:
 
-let
-  systemPkgs = with pkgs; [
-    # Core CLI + troubleshooting (good to have system-wide)
+{
+  environment.systemPackages = with pkgs; [
+    # Core CLI
     git
+    gh
     curl
     wget
     jq
@@ -11,35 +12,40 @@ let
     ripgrep
     fd
     fzf
+    eza
+    bat
+    zoxide
     tree
     tmux
 
-    # Archives
+    # Files / archives
+    rsync
     unzip
     zip
     p7zip
     xz
-    unrar
 
-    # Security basics
-    gnupg
-    openssl
-    sops
+    # Build essentials (needed often for dev tools)
+    gcc
+    gnumake
+    pkg-config
 
-    # Monitoring / diagnostics
+    # Nix helpers
+    nixfmt
+    nix-output-monitor
+    nvd
+
+    # Diagnostics
     htop
     btop
     lsof
     iotop
     ncdu
 
-    # Docs
-    tldr
-    man-pages
-    man-pages-posix
+    # Editors
+    vim
   ];
-in
-{
-  environment.systemPackages = systemPkgs;
-}
 
+  # Helps with running some third-party binaries/tools
+  programs.nix-ld.enable = true;
+}
