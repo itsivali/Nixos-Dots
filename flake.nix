@@ -29,6 +29,8 @@
         modules = [
           ./configuration.nix
 
+          ./hardware-configuration.nix
+
           ./modules/packages.nix
           ./modules/terminal.nix
           ./modules/development.nix
@@ -44,9 +46,6 @@
               useGlobalPkgs = true;
               useUserPackages = true;
 
-              # ✅ Fix: prevent failure when HM wants to manage existing dotfiles
-              # Existing files like ~/.profile and ~/.bashrc will be backed up once:
-              #   ~/.profile.hm-bak, ~/.bashrc.hm-bak, etc.
               backupFileExtension = "hm-bak";
 
               users.${username} = import ./home/${username}.nix;

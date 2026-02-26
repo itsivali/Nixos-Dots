@@ -23,11 +23,9 @@ narinfo-cache-negative-ttl = 0
 in
 {
   ############################################################
-  # IMPORTS (hardware is machine-specific)
+  # HARDWARE
   ############################################################
-  imports = [
-    ./hardware-configuration.nix
-  ];
+  # hardware-configuration.nix is imported from flake.nix (modules list)
 
   ############################################################
   # NIXPKGS / OVERLAYS
@@ -37,16 +35,34 @@ in
 
     overlays = [
       # Fix: picosvg tests failing (nanoemoji->gftools->fonts->HM)
-      (final: prev: {
-        python3 = prev.python3.override {
-          packageOverrides = pyFinal: pyPrev: {
-            picosvg = pyPrev.picosvg.overridePythonAttrs (_old: {
-              doCheck = false;
-            });
+      (final: prev:
+        let
+          disablePicosvgChecks = pyPkgs:
+            if pyPkgs ? picosvg then
+              pyPkgs // {
+                picosvg = pyPkgs.picosvg.overridePythonAttrs (_old: {
+                  doCheck = false;
+                });
+              }
+            else
+              pyPkgs;
+        in
+        {
+          # Patch default python3 package set
+          python3 = prev.python3.override {
+            packageOverrides = pyFinal: pyPrev: {
+              picosvg = pyPrev.picosvg.overridePythonAttrs (_old: {
+                doCheck = false;
+              });
+            };
           };
-        };
-        python3Packages = final.python3.pkgs;
-      })
+          python3Packages = final.python3.pkgs;
+        }
+        # Patch python3.13 explicitly
+        // lib.optionalAttrs (prev ? python313Packages) {
+          python313Packages = disablePicosvgChecks prev.python313Packages;
+        }
+      )
 
       # Fix: azure-cli install check sometimes fails
       (final: prev: {
@@ -176,6 +192,42 @@ in
   };
 
   services.packagekit.enable = false;
+
+  ############################################################
+  # FLATPAK (system-wide) + Flathub
+  ############################################################
+  services.flatpak.enable = true;
+
+  # Ensure the Flatpak CLI is available
+  environment.systemPackages = with pkgs; [ flatpak ];
+
+  # Ensure portals are available for Flatpak apps (file pickers, etc.)
+  xdg.portal = {
+    enable = true;
+    extraPortals = with pkgs; [
+      xdg-desktop-portal-gnome
+      xdg-desktop-portal-gtk
+    ];
+  };
+
+  # Make Flathub available automatically (system-wide)
+  systemd.services.flatpak-flathub = {
+    description = "Ensure Flathub Flatpak remote exists (system-wide)";
+    wants = [ "network-online.target" "dbus.service" ];
+    after = [ "network-online.target" "dbus.service" ];
+    wantedBy = [ "multi-user.target" ];
+
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+
+    script = ''
+      set -euo pipefail
+      ${pkgs.flatpak}/bin/flatpak remote-add --if-not-exists --system flathub \
+        https://flathub.org/repo/flathub.flatpakrepo
+    '';
+  };
 
   environment.sessionVariables = {
     NIXOS_OZONE_WL = "1";
