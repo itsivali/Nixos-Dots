@@ -221,7 +221,7 @@
     zoxide                  # smart cd  (z)
     fastfetch               # system info on login
 
-    nixfmt-rfc-style        # nix formatter  (nfmt alias)
+    nixfmt        # nix formatter  (nfmt alias)
     nvd                     # nix closure diff
   ];
 }

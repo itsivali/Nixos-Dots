@@ -156,6 +156,9 @@ let
   # Activate new config
   nixosSwitch = pkgs.writeShellScriptBin "nixos-switch" ''
     set -euo pipefail
+    if [[ $EUID -ne 0 ]] && ! sudo -n true 2>/dev/null; then
+      echo "==> This command requires sudo. You may be prompted for your password."
+    fi
     echo "==> nixos-rebuild switch --flake ${flakeRef} …"
     sudo ${pkgs.nixos-rebuild}/bin/nixos-rebuild switch \
       --flake "${flakeRef}" \
@@ -389,7 +392,7 @@ let
     set -euo pipefail
     echo "==> Formatting all .nix files in ${repoDir} …"
     find "${repoDir}" -name "*.nix" -type f \
-      -exec ${pkgs.nixfmt-rfc-style}/bin/nixfmt {} \;
+      -exec ${pkgs.nixfmt}/bin/nixfmt {} \;
     echo "==> Done."
   '';
 
@@ -551,7 +554,7 @@ in
       # Shell / prompt
       zsh-powerlevel10k
       fastfetch
-      nixfmt-rfc-style
+      nixfmt
 
       # CLI utilities
       eza bat fd ripgrep fzf zoxide nvd
