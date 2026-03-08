@@ -94,62 +94,70 @@
         fastfetch
       end
 
-      # ── Abbreviations (expand on Tab, visible in command line) ───────────
+    # ── Abbreviations (expand on Tab, visible in command line) ───────────
+    # NOTE: Abbreviations are declared in programs.fish.shellAbbrs below,
+    # not here, to avoid "abbreviation already exists" errors on every
+    # session re-open (fish 3.6+ errors on duplicate universal abbrs).
+  '';
 
-      # Navigation
-      abbr --add cfg       'cd ~/Nixos-Dots'
-      abbr --add edit-cfg  'code ~/Nixos-Dots'
-      abbr --add ll        'eza -lah --icons'
-      abbr --add ls        'eza --icons'
-      abbr --add ff        'fastfetch'
+  # ── Abbreviations — declared here so NixOS handles idempotency ────────
+  # These are written as universal abbreviations by the fish module and
+  # are not re-added on every session, preventing the fish 3.6+ duplicate error.
+  shellAbbrs = {
+    # Navigation
+    cfg       = "cd ~/Nixos-Dots";
+    edit-cfg  = "code ~/Nixos-Dots";
+    ll        = "eza -lah --icons";
+    ls        = "eza --icons";
+    ff        = "fastfetch";
 
-      # App launchers
-      abbr --add files  'open-files'
-      abbr --add term   'open-terminal'
-      abbr --add chrome 'open-chrome'
-      abbr --add vsc    'open-vscode'
+    # App launchers
+    files  = "open-files";
+    term   = "open-terminal";
+    chrome = "open-chrome";
+    vsc    = "open-vscode";
 
-      # Flake management
-      abbr --add fu      'nixos-flake-update'
-      abbr --add fui     'nixos-update-input'
-      abbr --add fcheck  'nixos-flake-check'
-      abbr --add inputs  'nixos-inputs'
-      abbr --add outputs 'nixos-outputs'
+    # Flake management
+    fu      = "nixos-flake-update";
+    fui     = "nixos-update-input";
+    fcheck  = "nixos-flake-check";
+    inputs  = "nixos-inputs";
+    outputs = "nixos-outputs";
 
-      # NixOS rebuild
-      abbr --add rebuild  'nixos-switch'
-      abbr --add nb       'nixos-build'
-      abbr --add nboot    'nixos-boot'
-      abbr --add ntest    'nixos-test'
-      abbr --add ndry     'nixos-dry'
-      abbr --add ndiff    'nixos-diff'
-      abbr --add ngen     'nixos-generations'
-      abbr --add nroll    'nixos-rollback'
-      abbr --add nfmt     'nixos-format'
-      abbr --add nlint    'nixos-lint'
+    # NixOS rebuild
+    rebuild  = "nixos-switch";
+    nb       = "nixos-build";
+    nboot    = "nixos-boot";
+    ntest    = "nixos-test";
+    ndry     = "nixos-dry";
+    ndiff    = "nixos-diff";
+    ngen     = "nixos-generations";
+    nroll    = "nixos-rollback";
+    nfmt     = "nixos-format";
+    nlint    = "nixos-lint";
 
-      # Full update pipelines
-      abbr --add update  'nixos-update'
-      abbr --add uall    'nixos-upgrade-all'
+    # Full update pipelines
+    update  = "nixos-update";
+    uall    = "nixos-upgrade-all";
 
-      # Garbage collection & store
-      abbr --add gc        'nixos-gc'
-      abbr --add gcold     'nixos-gc-old'
-      abbr --add gcdry     'nixos-gc-dry'
-      abbr --add opt       'nixos-optimise'
-      abbr --add clean     'nixos-clean'
-      abbr --add storesize 'nixos-store-size'
+    # Garbage collection & store
+    gc        = "nixos-gc";
+    gcold     = "nixos-gc-old";
+    gcdry     = "nixos-gc-dry";
+    opt       = "nixos-optimise";
+    clean     = "nixos-clean";
+    storesize = "nixos-store-size";
 
-      # Home Manager
-      abbr --add hms     'hm-switch'
-      abbr --add hmb     'hm-build'
-      abbr --add hmnews  'hm-news'
-      abbr --add hmpkgs  'hm-packages'
-      abbr --add hmgen   'hm-generations'
-      abbr --add hmgc    'hm-gc'
-      abbr --add hmroll  'hm-rollback'
-    '';
+    # Home Manager
+    hms     = "hm-switch";
+    hmb     = "hm-build";
+    hmnews  = "hm-news";
+    hmpkgs  = "hm-packages";
+    hmgen   = "hm-generations";
+    hmgc    = "hm-gc";
+    hmroll  = "hm-rollback";
   };
+};
 
   ############################################################
   # ZSH — retained: scripting, history & personal preference
@@ -209,8 +217,11 @@
     # data path so no fisher or runtime bootstrap is needed.
     fishPlugins.tide        # p10k-style async prompt
     fishPlugins.fzf-fish    # Ctrl-R history, Ctrl-T file, Alt-C cd
-    fishPlugins.z           # fast directory jumping
-    fishPlugins.async-prompt # non-blocking git status in prompt
+    # fishPlugins.z removed — zoxide already provides the `z` command;
+    # having both causes a conflicting `z` function definition.
+    # fishPlugins.async-prompt removed — tide has its own async prompt
+    # rendering; async-prompt wraps it in a second async layer that never
+    # resolves, causing the terminal to hang on the first prompt render.
     fishPlugins.pisces      # auto-close brackets and quotes
 
     eza                     # modern ls  (ll / ls aliases)

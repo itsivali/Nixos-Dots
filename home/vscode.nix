@@ -59,7 +59,8 @@ let
   # vscode-fhs creates a FHS-compatible env so extensions with native binaries
   # (Pylance, Copilot, etc.) work without manual patching on NixOS.
   vscodePkg = pkgs.vscode-fhs.override {
-    extraLibraries = lspBackends;
+    # extraLibraries must be a function (pkgs: [...]), not a bare list.
+    extraLibraries = _: lspBackends;
   };
 
   # ── Wayland-native launcher ─────────────────────────────────────────────────
@@ -239,7 +240,9 @@ in
         # Press Ctrl+K Ctrl+T to pick interactively.
         "workbench.colorTheme"            = "One Dark Pro";
         "workbench.iconTheme"             = "material-icon-theme";
-        "workbench.productIconTheme"      = "material-product-icons";
+        # NOTE: "workbench.productIconTheme" = "material-product-icons" removed —
+        # pkief.material-product-icons is a separate extension not listed above.
+        # Add it to the extensions block (or as a marketplace extension) before re-enabling.
 
         # ── Workbench layout ──────────────────────────────────────────────────
         "workbench.tree.indent"           = 16;
