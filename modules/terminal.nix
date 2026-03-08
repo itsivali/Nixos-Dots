@@ -54,6 +54,7 @@
       # so these survive across sessions without re-running `tide configure`.
       set -U tide_left_prompt_items   pwd git newline character
       set -U tide_right_prompt_items  status cmd_duration jobs node python rustc go java php time
+      set -U tide_cmd_duration_threshold 3000
 
       set -U tide_pwd_color_anchors          brblue
       set -U tide_pwd_color_dirs             blue
