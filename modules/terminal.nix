@@ -88,8 +88,8 @@
         ${pkgs.zoxide}/bin/zoxide init fish | source
       end
 
-      # ── fastfetch on login ────────────────────────────────────────────────
-      if status is-login
+      # ── fastfetch on every terminal open ──────────────────────────────────
+      if status is-interactive
         and test -z "$NO_FASTFETCH"
         and command -q fastfetch
         fastfetch
@@ -228,7 +228,7 @@
     ripgrep                 # fast grep
     fzf                     # fuzzy finder  (Ctrl-R in both shells)
     zoxide                  # smart cd  (z)
-    fastfetch               # system info on login
+    fastfetch               # system info on every terminal open
 
     nixfmt                  # nix formatter  (nfmt alias)
     nvd                     # nix closure diff
