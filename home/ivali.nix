@@ -59,8 +59,8 @@ let
   openChrome = pkgs.writeShellScriptBin "open-chrome" ''
     set -euo pipefail
     if command -v google-chrome-stable >/dev/null 2>&1; then exec google-chrome-stable; fi
-    if command -v google-chrome       >/dev/null 2>&1; then exec google-chrome;        fi
-    if command -v chromium            >/dev/null 2>&1; then exec chromium;             fi
+    if command -v google-chrome        >/dev/null 2>&1; then exec google-chrome;        fi
+    if command -v chromium             >/dev/null 2>&1; then exec chromium;             fi
     exit 0
   '';
 
@@ -480,7 +480,6 @@ let
     alias hmgc='hm-gc'                   # remove old HM generations
     alias hmroll='hm-rollback'           # roll back HM to previous gen
   '';
-
 in
 {
   # Pull VS Code config (extensions, settings, keybindings, LSP backends)
@@ -493,7 +492,6 @@ in
 
   programs.home-manager.enable = true;
   xdg.enable = true;
-
   home.sessionPath = [ "$HOME/.local/bin" ];
   home.sessionVariables = {
     EDITOR = "vim";
@@ -530,7 +528,6 @@ in
   dconf.enable = true;
   dconf.settings = {
     "org/gnome/shell" = { development-tools = true; };
-
     "org/gnome/desktop/wm/keybindings" = {
       close = [ "<Super>q" "<Alt>F4" ];
     };
@@ -539,13 +536,13 @@ in
       custom-keybindings = [ kb0Path kb1Path kb2Path kb3Path kb4Path kb5Path kb6Path ];
     };
 
-    "${kb0Key}" = { name = "Files";                command = "${openFiles}/bin/open-files";             binding = "<Super>e";      };
-    "${kb1Key}" = { name = "Terminal";             command = "${openTerminal}/bin/open-terminal";        binding = "<Control>period"; };
-    "${kb2Key}" = { name = "Chrome";               command = "${openChrome}/bin/open-chrome";            binding = "<Control>b";    };
-    "${kb3Key}" = { name = "VS Code";              command = "${openVSCode}/bin/open-vscode";            binding = "<Super>c";      };
+    "${kb0Key}" = { name = "Files";                command = "${openFiles}/bin/open-files";               binding = "<Super>e";      };
+    "${kb1Key}" = { name = "Terminal";             command = "${openTerminal}/bin/open-terminal";         binding = "<Control>period"; };
+    "${kb2Key}" = { name = "Chrome";               command = "${openChrome}/bin/open-chrome";             binding = "<Control>b";    };
+    "${kb3Key}" = { name = "VS Code";              command = "${openVSCode}/bin/open-vscode";             binding = "<Super>c";      };
     "${kb4Key}" = { name = "Kill focused window";  command = "${killActiveWindow}/bin/kill-active-window"; binding = "<Super>Escape"; };
-    "${kb5Key}" = { name = "Reboot NOW";           command = "${rebootNow}/bin/reboot-now";              binding = "<Super>z";      };
-    "${kb6Key}" = { name = "Shutdown NOW";         command = "${poweroffNow}/bin/poweroff-now";          binding = "<Super>x";      };
+    "${kb5Key}" = { name = "Reboot NOW";           command = "${rebootNow}/bin/reboot-now";               binding = "<Super>z";      };
+    "${kb6Key}" = { name = "Shutdown NOW";         command = "${poweroffNow}/bin/poweroff-now";           binding = "<Super>x";      };
   };
 
   # ── Packages ──────────────────────────────────────────────────────────────

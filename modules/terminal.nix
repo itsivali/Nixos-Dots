@@ -34,7 +34,7 @@
     # ── Vendor fish plugin files from packages in environment.systemPackages ─
     # programs.fish.vendor.{config,completions,functions}.enable are all true
     # by default — fish picks up plugin files from any package in the system
-    # path automatically.  Plugin packages are listed under systemPackages below.
+    # path automatically. Plugin packages are listed under systemPackages below.
 
     # ── Runs in every fish session (interactive + non-interactive) ─────────
     shellInit = ''
@@ -58,14 +58,14 @@
       set -U tide_pwd_color_anchors          brblue
       set -U tide_pwd_color_dirs             blue
       set -U tide_pwd_color_truncated_dirs   brblack
-      set -U tide_pwd_unwritable_icon        
+      set -U tide_pwd_unwritable_icon        ""
 
       set -U tide_git_color_branch           brgreen
       set -U tide_git_color_staged           bryellow
       set -U tide_git_color_dirty            brred
       set -U tide_git_color_untracked        cyan
       set -U tide_git_color_operation        brred
-      set -U tide_git_icon                  
+      set -U tide_git_icon                   ""
 
       set -U tide_character_icon             ❯
       set -U tide_character_color            brgreen
@@ -217,11 +217,8 @@
     # data path so no fisher or runtime bootstrap is needed.
     fishPlugins.tide        # p10k-style async prompt
     fishPlugins.fzf-fish    # Ctrl-R history, Ctrl-T file, Alt-C cd
-    # fishPlugins.z removed — zoxide already provides the `z` command;
-    # having both causes a conflicting `z` function definition.
-    # fishPlugins.async-prompt removed — tide has its own async prompt
-    # rendering; async-prompt wraps it in a second async layer that never
-    # resolves, causing the terminal to hang on the first prompt render.
+    # fishPlugins.z removed — zoxide already provides the `z` command; having both causes a conflicting `z` function definition.
+    # fishPlugins.async-prompt removed — tide has its own async prompt rendering; async-prompt wraps it in a second async layer that never resolves, causing the terminal to hang on the first prompt render.
     fishPlugins.pisces      # auto-close brackets and quotes
 
     eza                     # modern ls  (ll / ls aliases)
@@ -232,7 +229,7 @@
     zoxide                  # smart cd  (z)
     fastfetch               # system info on login
 
-    nixfmt        # nix formatter  (nfmt alias)
+    nixfmt                  # nix formatter  (nfmt alias)
     nvd                     # nix closure diff
   ];
 }
