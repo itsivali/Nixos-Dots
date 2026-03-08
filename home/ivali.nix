@@ -15,9 +15,13 @@ let
       [ ];
 
   # ── Preferred apps with fallbacks ──────────────────────────────────────────
+  # VS Code package — vscode-fhs wraps the binary in a FHS environment so
+  # extensions that ship native binaries (pylance, copilot, etc.) work correctly.
+  # Fallback chain: vscode-fhs → vscodium → vim
   vsCodePkg =
-    if builtins.hasAttr "vscode"   pkgs then pkgs.vscode
-    else if builtins.hasAttr "vscodium" pkgs then pkgs.vscodium
+    if builtins.hasAttr "vscode-fhs" pkgs then pkgs.vscode-fhs
+    else if builtins.hasAttr "vscode"    pkgs then pkgs.vscode
+    else if builtins.hasAttr "vscodium"  pkgs then pkgs.vscodium
     else pkgs.vim;
 
   chromePkg =
@@ -548,6 +552,77 @@ in
     "${kb6Key}" = { name = "Shutdown NOW";         command = "${poweroffNow}/bin/poweroff-now";          binding = "<Super>x";      };
   };
 
+  # ── VS Code — managed via Home Manager so settings are declarative ─────────
+  # update.mode "none" silences the built-in updater; Nix controls the version.
+  programs.vscode = {
+    enable   = true;
+    package  = vsCodePkg;
+
+    profiles.default.userSettings = {
+      # ── Updater ──────────────────────────────────────────────────────────
+      # Disable the built-in updater entirely — Nix manages the version.
+      "update.mode"                = "none";
+      "update.showReleaseNotes"    = false;
+      "extensions.autoUpdate"      = false;
+      "extensions.autoCheckUpdates" = false;
+
+      # ── Editor ───────────────────────────────────────────────────────────
+      "editor.fontFamily"          = "'JetBrainsMono Nerd Font', 'FiraCode Nerd Font', monospace";
+      "editor.fontSize"            = 14;
+      "editor.fontLigatures"       = true;
+      "editor.tabSize"             = 2;
+      "editor.insertSpaces"        = true;
+      "editor.formatOnSave"        = true;
+      "editor.minimap.enabled"     = false;
+      "editor.renderWhitespace"    = "boundary";
+      "editor.bracketPairColorization.enabled" = true;
+      "editor.guides.bracketPairs" = "active";
+      "editor.cursorBlinking"      = "smooth";
+      "editor.cursorSmoothCaretAnimation" = "on";
+      "editor.smoothScrolling"     = true;
+      "editor.stickyScroll.enabled" = true;
+
+      # ── Workbench ────────────────────────────────────────────────────────
+      "workbench.colorTheme"       = "Default Dark Modern";
+      "workbench.iconTheme"        = "vs-seti";
+      "workbench.startupEditor"    = "none";
+      "workbench.tree.indent"      = 16;
+
+      # ── Terminal — use fish as the integrated terminal ────────────────────
+      "terminal.integrated.defaultProfile.linux" = "fish";
+      "terminal.integrated.profiles.linux" = {
+        fish = { path = "/run/current-system/sw/bin/fish"; };
+        zsh  = { path = "/run/current-system/sw/bin/zsh"; };
+        bash = { path = "/run/current-system/sw/bin/bash"; };
+      };
+      "terminal.integrated.fontFamily" = "'JetBrainsMono Nerd Font'";
+      "terminal.integrated.fontSize"   = 13;
+
+      # ── Git ──────────────────────────────────────────────────────────────
+      "git.autofetch"              = true;
+      "git.confirmSync"            = false;
+      "git.enableSmartCommit"      = true;
+
+      # ── Files ────────────────────────────────────────────────────────────
+      "files.trimTrailingWhitespace"     = true;
+      "files.insertFinalNewline"         = true;
+      "files.trimFinalNewlines"          = true;
+      "files.autoSave"                   = "onFocusChange";
+      "files.exclude" = {
+        "**/.git"        = true;
+        "**/.DS_Store"   = true;
+        "**/node_modules" = true;
+        "**/__pycache__" = true;
+        "**/.direnv"     = true;
+      };
+
+      # ── Nix ──────────────────────────────────────────────────────────────
+      "nix.enableLanguageServer" = true;
+      "nix.serverPath"           = "nil";
+      "[nix]"."editor.defaultFormatter" = "jnoortheen.nix-ide";
+    };
+  };
+
   # ── Packages ──────────────────────────────────────────────────────────────
   home.packages =
     (with pkgs; [
@@ -561,7 +636,6 @@ in
 
       # GUI apps
       chromePkg
-      vsCodePkg
       libreOfficePkg
 
       github-desktop

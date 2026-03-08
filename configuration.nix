@@ -7,11 +7,15 @@ let
     set -euo pipefail
 
     export NIX_CONFIG="experimental-features = nix-command flakes
-http-connections = 2
+substituters = https://cache.nixos.org https://nix-community.cachix.org https://nixpkgs-unfree.cachix.org
+trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= nixpkgs-unfree.cachix.org-1:hqvoInulhbV4nJ9yJOEr+4wxRDkznGAW2xIWLJLCDdo=
+http-connections = 25
 http2 = false
-connect-timeout = 60
-download-attempts = 200
+connect-timeout = 10
+stalled-download-timeout = 15
+download-attempts = 5
 narinfo-cache-negative-ttl = 0
+fallback = true
 "
 
     echo "==> [nightly] $(date -Is) nixos-rebuild switch /etc/nixos#prague"
@@ -48,7 +52,6 @@ in
               pyPkgs;
         in
         {
-          # Patch default python3 package set
           python3 = prev.python3.override {
             packageOverrides = pyFinal: pyPrev: {
               picosvg = pyPrev.picosvg.overridePythonAttrs (_old: {
@@ -58,7 +61,6 @@ in
           };
           python3Packages = final.python3.pkgs;
         }
-        # Patch python3.13 explicitly
         // lib.optionalAttrs (prev ? python313Packages) {
           python313Packages = disablePicosvgChecks prev.python313Packages;
         }
@@ -90,18 +92,13 @@ in
     kernelModules = [ "kvm-amd" ];
     tmp.cleanOnBoot = true;
 
-    # Performance sysctls (security sysctls live in modules/security.nix)
     kernel.sysctl = {
-      "vm.swappiness" = 10;
-      "vm.vfs_cache_pressure" = 50;
-
-      "vm.dirty_background_ratio" = 5;
-      "vm.dirty_ratio" = 20;
-      "vm.page-cluster" = 0;
-
-      "kernel.nmi_watchdog" = 0;
-
-      # Desktop responsiveness under load
+      "vm.swappiness"                  = 10;
+      "vm.vfs_cache_pressure"          = 50;
+      "vm.dirty_background_ratio"      = 5;
+      "vm.dirty_ratio"                 = 20;
+      "vm.page-cluster"                = 0;
+      "kernel.nmi_watchdog"            = 0;
       "kernel.sched_autogroup_enabled" = 1;
       "kernel.sched_migration_cost_ns" = 5000000;
     };
@@ -134,7 +131,6 @@ in
     hostName = "prague";
     networkmanager.enable = true;
     timeServers = [ "time.cloudflare.com" "time.google.com" ];
-    # Firewall rules/ports are defined in modules/security.nix (closed by default)
   };
 
   ############################################################
@@ -145,15 +141,15 @@ in
   i18n = {
     defaultLocale = "en_US.UTF-8";
     extraLocaleSettings = {
-      LC_ADDRESS = "en_US.UTF-8";
+      LC_ADDRESS        = "en_US.UTF-8";
       LC_IDENTIFICATION = "en_US.UTF-8";
-      LC_MEASUREMENT = "en_US.UTF-8";
-      LC_MONETARY = "en_US.UTF-8";
-      LC_NAME = "en_US.UTF-8";
-      LC_NUMERIC = "en_US.UTF-8";
-      LC_PAPER = "en_US.UTF-8";
-      LC_TELEPHONE = "en_US.UTF-8";
-      LC_TIME = "en_US.UTF-8";
+      LC_MEASUREMENT    = "en_US.UTF-8";
+      LC_MONETARY       = "en_US.UTF-8";
+      LC_NAME           = "en_US.UTF-8";
+      LC_NUMERIC        = "en_US.UTF-8";
+      LC_PAPER          = "en_US.UTF-8";
+      LC_TELEPHONE      = "en_US.UTF-8";
+      LC_TIME           = "en_US.UTF-8";
     };
   };
 
@@ -171,24 +167,18 @@ in
   services.displayManager.gdm.wayland = true;
   services.desktopManager.gnome.enable = true;
 
-  # Trim background services you don't need on a dev workstation
   services.geoclue2.enable = lib.mkForce false;
-  services.avahi.enable = lib.mkForce false;
+  services.avahi.enable    = lib.mkForce false;
 
   services.gnome = {
     core-apps.enable = true;
-
-    # Disable GNOME content indexing/search services
-    tinysparql.enable = lib.mkForce false;
-    localsearch.enable = lib.mkForce false;
-
-    # Remove/disable GUI software center and sharing services
-    gnome-software.enable = lib.mkForce false;
-    gnome-user-share.enable = lib.mkForce false;
-    rygel.enable = lib.mkForce false;
+    tinysparql.enable         = lib.mkForce false;
+    localsearch.enable        = lib.mkForce false;
+    gnome-software.enable     = lib.mkForce false;
+    gnome-user-share.enable   = lib.mkForce false;
+    rygel.enable              = lib.mkForce false;
     gnome-remote-desktop.enable = lib.mkForce false;
-
-    games.enable = lib.mkForce false;
+    games.enable              = lib.mkForce false;
   };
 
   services.packagekit.enable = false;
@@ -198,10 +188,8 @@ in
   ############################################################
   services.flatpak.enable = true;
 
-  # Ensure the Flatpak CLI is available
   environment.systemPackages = with pkgs; [ flatpak ];
 
-  # Ensure portals are available for Flatpak apps (file pickers, etc.)
   xdg.portal = {
     enable = true;
     extraPortals = with pkgs; [
@@ -210,18 +198,15 @@ in
     ];
   };
 
-  # Make Flathub available automatically (system-wide)
   systemd.services.flatpak-flathub = {
     description = "Ensure Flathub Flatpak remote exists (system-wide)";
-    wants = [ "network-online.target" "dbus.service" ];
-    after = [ "network-online.target" "dbus.service" ];
+    wants  = [ "network-online.target" "dbus.service" ];
+    after  = [ "network-online.target" "dbus.service" ];
     wantedBy = [ "multi-user.target" ];
-
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
     };
-
     script = ''
       set -euo pipefail
       ${pkgs.flatpak}/bin/flatpak remote-add --if-not-exists --system flathub \
@@ -230,11 +215,11 @@ in
   };
 
   environment.sessionVariables = {
-    NIXOS_OZONE_WL = "1";
-    ELECTRON_OZONE_PLATFORM_HINT = "auto";
-    MUTTER_DEBUG_FORCE_KMS_MODE = "1";
-    GIO_USE_VFS = "local";
-    MOZ_ENABLE_WAYLAND = "1";
+    NIXOS_OZONE_WL                   = "1";
+    ELECTRON_OZONE_PLATFORM_HINT     = "auto";
+    MUTTER_DEBUG_FORCE_KMS_MODE      = "1";
+    GIO_USE_VFS                      = "local";
+    MOZ_ENABLE_WAYLAND               = "1";
   };
 
   environment.gnome.excludePackages = with pkgs; [
@@ -266,10 +251,10 @@ in
 
   services.pipewire = {
     enable = true;
-    alsa.enable = true;
-    alsa.support32Bit = true;
-    pulse.enable = true;
-    jack.enable = true;
+    alsa.enable        = true;
+    alsa.support32Bit  = true;
+    pulse.enable       = true;
+    jack.enable        = true;
   };
 
   ############################################################
@@ -277,8 +262,8 @@ in
   ############################################################
   users.users.ivali = {
     isNormalUser = true;
-    description = "Willis Ivali";
-    extraGroups = [
+    description  = "Willis Ivali";
+    extraGroups  = [
       "networkmanager"
       "wheel"
       "docker"
@@ -287,30 +272,39 @@ in
       "audio"
       "video"
     ];
-    shell = pkgs.zsh;
+    # Fish is the interactive login shell.
+    # Zsh remains available (and configured with history) — see modules/terminal.nix.
+    shell = pkgs.fish;
   };
 
   ############################################################
-  # WIRESHARK
+  # SHELLS
+  # Both fish and zsh are enabled system-wide so either can be
+  # used in terminals, scripts, or switched to with `zsh`.
   ############################################################
-  programs.wireshark = {
-    enable = true;
-    package = pkgs.wireshark;
-  };
 
-  ############################################################
-  # ZSH (system-level)
-  ############################################################
+  # Fish — interactive default
+  programs.fish.enable = true;
+
+  # Zsh — kept for scripting, history sharing, and personal preference
   programs.zsh = {
     enable = true;
     enableCompletion = true;
   };
 
   ############################################################
+  # WIRESHARK
+  ############################################################
+  programs.wireshark = {
+    enable  = true;
+    package = pkgs.wireshark;
+  };
+
+  ############################################################
   # TESTING SERVICES DEFAULTS (opt-in; actual logic in modules/testing.nix)
   ############################################################
   testing = {
-    enable = false;
+    enable      = false;
     openFirewall = false;
   };
 
@@ -320,32 +314,60 @@ in
   nix = {
     settings = {
       experimental-features = [ "nix-command" "flakes" ];
-      auto-optimise-store = true;
+      auto-optimise-store   = true;
 
-      allowed-users = [ "@wheel" ];
-      trusted-users = [ "root" "@wheel" ];
+      allowed-users  = [ "@wheel" ];
+      trusted-users  = [ "root" "@wheel" ];
 
+      # ── Binary caches ───────────────────────────────────────────────────
+      # Three substituters so Nix tries the next one if the first is slow.
+      # nixpkgs-unfree carries pre-built unfree packages (vscode, chrome …).
       substituters = [
         "https://cache.nixos.org"
         "https://nix-community.cachix.org"
+        "https://nixpkgs-unfree.cachix.org"
       ];
 
       trusted-public-keys = [
         "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
         "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+        "nixpkgs-unfree.cachix.org-1:hqvoInulhbV4nJ9yJOEr+4wxRDkznGAW2xIWLJLCDdo="
       ];
 
-      http-connections = 2;
-      http2 = false;
-      connect-timeout = 60;
-      download-attempts = 200;
+      # ── Download tuning for high-latency / unreliable links ─────────────
+      # 25 parallel connections — Nix races substituters and uses whichever
+      # responds first, so more connections = faster on flaky links.
+      http-connections           = 25;
+
+      # Disable HTTP/2 — it multiplexes over a single TCP connection which
+      # amplifies packet-loss pain; plain HTTP/1.1 per-connection is more
+      # resilient on high-latency African routes.
+      http2                      = false;
+
+      # Fail a *connection attempt* quickly (10 s) so Nix retries rather
+      # than waiting 60 s per attempt doing nothing.
+      connect-timeout            = 10;
+
+      # Abort a download that stalls (0 bytes) for more than 15 s and retry.
+      # This is the key fix — the old config had no stall timeout so each
+      # attempt hung for the full 60 s connect-timeout with 0 bytes received.
+      stalled-download-timeout   = 15;
+
+      # Only retry 5 times per path — with fast fail + stall detection,
+      # 5 attempts across 3 substituters is plenty before falling back.
+      download-attempts          = 5;
+
+      # If all substituters fail for a path, build it locally from source
+      # rather than aborting the whole rebuild.
+      fallback                   = true;
+
       narinfo-cache-negative-ttl = 0;
     };
 
     gc = {
       automatic = true;
-      dates = "weekly";
-      options = "--delete-older-than 5d";
+      dates     = "weekly";
+      options   = "--delete-older-than 5d";
     };
   };
 
@@ -354,41 +376,39 @@ in
   ############################################################
   systemd.services.nixos-nightly-rebuild = {
     description = "Nightly NixOS rebuild (flake /etc/nixos#prague)";
-    wants = [ "network-online.target" ];
-    after = [ "network-online.target" ];
+    wants  = [ "network-online.target" ];
+    after  = [ "network-online.target" ];
 
     serviceConfig = {
-      Type = "oneshot";
-      User = "root";
-      ExecStart = nightlyRebuildScript;
-
-      Nice = 10;
-      IOSchedulingClass = "best-effort";
+      Type            = "oneshot";
+      User            = "root";
+      ExecStart       = nightlyRebuildScript;
+      Nice            = 10;
+      IOSchedulingClass    = "best-effort";
       IOSchedulingPriority = 7;
-
-      TimeoutStartSec = "6h";
-      StandardOutput = "journal";
-      StandardError = "journal";
+      TimeoutStartSec      = "6h";
+      StandardOutput  = "journal";
+      StandardError   = "journal";
     };
   };
 
   systemd.timers.nixos-nightly-rebuild = {
     description = "Run nightly NixOS rebuild";
-    wantedBy = [ "timers.target" ];
+    wantedBy    = [ "timers.target" ];
     timerConfig = {
-      OnCalendar = "*-*-* 02:30:00";
-      RandomizedDelaySec = "45m";
-      Persistent = true;
-      AccuracySec = "5m";
-      Unit = "nixos-nightly-rebuild.service";
+      OnCalendar          = "*-*-* 02:30:00";
+      RandomizedDelaySec  = "45m";
+      Persistent          = true;
+      AccuracySec         = "5m";
+      Unit                = "nixos-nightly-rebuild.service";
     };
   };
 
   ############################################################
   # SYSTEM SERVICES
   ############################################################
-  services.fwupd.enable = true;
-  services.fstrim.enable = true;
+  services.fwupd.enable    = true;
+  services.fstrim.enable   = true;
   services.irqbalance.enable = true;
   services.thermald.enable = lib.mkDefault false;
 
