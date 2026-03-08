@@ -31,19 +31,10 @@
   programs.fish = {
     enable = true;
 
-    # ── Plugins resolved at build time — no fisher/curl needed at runtime ──
-    plugins = [
-      # Tide: async p10k-style prompt for fish
-      { name = "tide";         src = pkgs.fishPlugins.tide.src; }
-      # fzf key-bindings: Ctrl-R history, Ctrl-T file, Alt-C cd
-      { name = "fzf-fish";     src = pkgs.fishPlugins.fzf-fish.src; }
-      # z — fast directory jumping (like zoxide)
-      { name = "z";            src = pkgs.fishPlugins.z.src; }
-      # Async prompt rendering (keeps input snappy during slow git ops)
-      { name = "async-prompt"; src = pkgs.fishPlugins.async-prompt.src; }
-      # Auto-close brackets and quotes
-      { name = "pisces";       src = pkgs.fishPlugins.pisces.src; }
-    ];
+    # ── Vendor fish plugin files from packages in environment.systemPackages ─
+    # programs.fish.vendor.{config,completions,functions}.enable are all true
+    # by default — fish picks up plugin files from any package in the system
+    # path automatically.  Plugin packages are listed under systemPackages below.
 
     # ── Runs in every fish session (interactive + non-interactive) ─────────
     shellInit = ''
@@ -211,17 +202,26 @@
   environment.systemPackages = with pkgs; [
     fish
     zsh
-    zsh-powerlevel10k   # sourced in home/ivali.nix for zsh
+    zsh-powerlevel10k       # sourced in home/ivali.nix for zsh
 
-    eza                 # modern ls  (ll / ls aliases)
-    bat                 # modern cat + MANPAGER
-    fd                  # fast find
-    ripgrep             # fast grep
-    fzf                 # fuzzy finder  (Ctrl-R in both shells)
-    zoxide              # smart cd  (z)
-    fastfetch           # system info on login
+    # ── Fish plugins (vendored automatically by programs.fish.vendor.*) ────
+    # NixOS installs their conf.d / functions / completions into the fish
+    # data path so no fisher or runtime bootstrap is needed.
+    fishPlugins.tide        # p10k-style async prompt
+    fishPlugins.fzf-fish    # Ctrl-R history, Ctrl-T file, Alt-C cd
+    fishPlugins.z           # fast directory jumping
+    fishPlugins.async-prompt # non-blocking git status in prompt
+    fishPlugins.pisces      # auto-close brackets and quotes
 
-    nixfmt-rfc-style    # nix formatter  (nfmt alias)
-    nvd                 # nix closure diff
+    eza                     # modern ls  (ll / ls aliases)
+    bat                     # modern cat + MANPAGER
+    fd                      # fast find
+    ripgrep                 # fast grep
+    fzf                     # fuzzy finder  (Ctrl-R in both shells)
+    zoxide                  # smart cd  (z)
+    fastfetch               # system info on login
+
+    nixfmt-rfc-style        # nix formatter  (nfmt alias)
+    nvd                     # nix closure diff
   ];
 }
