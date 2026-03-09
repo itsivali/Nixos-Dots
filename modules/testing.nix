@@ -1,17 +1,14 @@
 # modules/testing.nix
 # Optional testing services (safe defaults, localhost-only)
+# Now also includes support for testing packages and custom aliases.
 { config, pkgs, lib, ... }:
 
 {
   options.testing = {
-    enable = lib.mkEnableOption "testing services";
+    enable = lib.mkEnableOption "testing services and packages";
 
     # Only open firewall ports if you explicitly want LAN access
     openFirewall = lib.mkEnableOption "open firewall ports for enabled testing services (NOT recommended by default)";
-
-    # Remote desktop (optional)
-    teamviewer = lib.mkEnableOption "TeamViewer testing";
-    anydesk = lib.mkEnableOption "AnyDesk testing";
 
     # Databases (localhost only by default)
     postgresql = lib.mkEnableOption "PostgreSQL testing";
@@ -22,20 +19,30 @@
     # Web servers (localhost only unless openFirewall=true)
     nginx = lib.mkEnableOption "Nginx testing";
     apache = lib.mkEnableOption "Apache testing";
+
+    # Additional packages you want available for testing (e.g. curl, jq, hey)
+    extraPackages = lib.mkOption {
+      type = lib.types.listOf lib.types.package;
+      default = [ ];
+      description = "List of packages to install system-wide for testing purposes.";
+      example = lib.literalExpression "[ pkgs.hey pkgs.jq ]";
+    };
+
+    # Custom shell aliases for testing workflows
+    shellAliases = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      description = "Shell aliases added when testing is enabled.";
+      example = lib.literalExpression ''
+        {
+          pg-test = "psql -U test -h localhost postgres";
+          mysql-test = "mysql -u test -p -h 127.0.0.1";
+        }
+      '';
+    };
   };
 
   config = lib.mkIf config.testing.enable {
-
-    # -------------------------
-    # Remote Desktop (optional)
-    # -------------------------
-    services.teamviewer.enable = lib.mkIf config.testing.teamviewer true;
-
-    nixpkgs.config.permittedInsecurePackages =
-      lib.optionals config.testing.teamviewer [ "qtwebengine-5.15.19" ];
-
-    # AnyDesk example (only if you later add the module/service)
-    # services.anydesk.enable = lib.mkIf config.testing.anydesk true;
 
     # -------------------------
     # PostgreSQL (local-only, safer auth)
@@ -121,13 +128,19 @@
     };
 
     # -------------------------
-    # Optional client tools
+    # Client tools for enabled services
     # -------------------------
     environment.systemPackages =
       (lib.optionals config.testing.postgresql [ pkgs.postgresql ])
       ++ (lib.optionals config.testing.mysql [ pkgs.mysql80 ])
       ++ (lib.optionals config.testing.redis [ pkgs.redis ])
-      ++ (lib.optionals config.testing.mongodb [ pkgs.mongodb ]);
+      ++ (lib.optionals config.testing.mongodb [ pkgs.mongodb ])
+      ++ config.testing.extraPackages;   # user‑supplied testing packages
+
+    # -------------------------
+    # Shell aliases for testing
+    # -------------------------
+    environment.shellAliases = config.testing.shellAliases;
 
     # -------------------------
     # Firewall (ONLY if openFirewall = true)
