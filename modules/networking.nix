@@ -1,4 +1,13 @@
-
+# modules/networking.nix
+# Networking, firewall, and LocalSend configuration for the prague workstation.
+#
+# LocalSend ports (official):
+#   TCP 53317  — file transfer (HTTP)
+#   UDP 53317  — device discovery (multicast)
+#
+# Add this module to flake.nix modules list:
+#   ./modules/networking.nix
+#
 { config, pkgs, lib, ... }:
 
 {
@@ -14,7 +23,7 @@
       wifi.powersave = false;
     };
 
-
+    # Use Cloudflare + Google as NTP (carried over from configuration.nix)
     timeServers = [
       "time.cloudflare.com"
       "time.google.com"
@@ -62,9 +71,9 @@
   # Override that here so LocalSend can advertise itself via mDNS and
   # mobile devices can discover this machine by hostname on the LAN.
   services.avahi = {
-    enable     = lib.mkOverride 50 true;   # priority 50 beats mkForce (1)? No —
-    # mkForce = priority 50, mkOverride 50 = same priority, last wins.
-    # Use lib.mkOverride 49 to beat mkForce false set in configuration.nix.
+    # mkForce = priority 50. mkOverride 49 is one step higher so it wins.
+    # configuration.nix disables avahi with mkForce false — we must beat it.
+    enable = lib.mkOverride 49 true;
     publish = {
       enable               = true;
       addresses            = true;
@@ -84,14 +93,18 @@
   systemd.user.services.localsend = {
     description = "LocalSend — LAN file sharing";
     wantedBy    = [ "graphical-session.target" ];
-    after       = [ "graphical-session.target" ];
+    after       = [ "graphical-session.target" "network-online.target" ];
     partOf      = [ "graphical-session.target" ];
 
     serviceConfig = {
-      Type            = "simple";
-      ExecStart       = "${pkgs.localsend}/bin/localsend --headless";
-      Restart         = "on-failure";
-      RestartSec      = "5s";
+      Type       = "simple";
+      # --hidden starts minimised to tray; the GUI still initialises and
+      # registers on the LAN. --headless is for truly no-display environments
+      # and does NOT announce the device, which is why the phone couldn't see
+      # the laptop.
+      ExecStart  = "${pkgs.localsend}/bin/localsend --hidden";
+      Restart    = "on-failure";
+      RestartSec = "5s";
     };
   };
 }
