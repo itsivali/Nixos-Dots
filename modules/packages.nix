@@ -44,6 +44,9 @@
 
     # Editors
     vim
+
+    # Sharing
+    localsend
   ];
 
   # Helps with running some third-party binaries/tools

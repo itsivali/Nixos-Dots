@@ -1,0 +1,97 @@
+
+{ config, pkgs, lib, ... }:
+
+{
+  ############################################################
+  # NETWORKING
+  ############################################################
+  networking = {
+    hostName = "prague";
+
+    networkmanager = {
+      enable = true;
+      # Faster Wi-Fi roaming; harmless on Ethernet
+      wifi.powersave = false;
+    };
+
+
+    timeServers = [
+      "time.cloudflare.com"
+      "time.google.com"
+    ];
+
+    ############################################################
+    # FIREWALL
+    ############################################################
+    # security.nix owns `networking.firewall.enable` (mkDefault true).
+    # This module only appends ports — it never fights security.nix.
+    firewall = {
+
+      # ── Standard services ────────────────────────────────────────────────────
+      # Add TCP ports here as you enable new services; keep the list short.
+      allowedTCPPorts = lib.mkAfter [
+        53317   # LocalSend — file transfer (HTTP)
+      ];
+
+      allowedUDPPorts = lib.mkAfter [
+        53317   # LocalSend — device discovery (multicast)
+      ];
+
+      # ── Multicast / mDNS for LocalSend discovery ─────────────────────────────
+      # LocalSend uses UDP multicast (224.0.0.167:53317) so mobile devices can
+      # find this machine on the LAN without manual IP entry.
+      # extraCommands is run after nftables/iptables rules are loaded.
+      extraCommands = ''
+        # Accept multicast packets destined for LocalSend's group address
+        iptables -A nixos-fw -d 224.0.0.167/32 -p udp --dport 53317 -j ACCEPT
+        ip6tables -A nixos-fw -d ff02::1/128    -p udp --dport 53317 -j ACCEPT || true
+      '';
+
+      # Clean up the rules added above on firewall stop/restart
+      extraStopCommands = ''
+        iptables  -D nixos-fw -d 224.0.0.167/32 -p udp --dport 53317 -j ACCEPT 2>/dev/null || true
+        ip6tables -D nixos-fw -d ff02::1/128    -p udp --dport 53317 -j ACCEPT 2>/dev/null || true
+      '';
+    };
+  };
+
+  ############################################################
+  # AVAHI — mDNS / zeroconf (needed for LocalSend discovery)
+  ############################################################
+  # configuration.nix sets `services.avahi.enable = lib.mkForce false`.
+  # Override that here so LocalSend can advertise itself via mDNS and
+  # mobile devices can discover this machine by hostname on the LAN.
+  services.avahi = {
+    enable     = lib.mkOverride 50 true;   # priority 50 beats mkForce (1)? No —
+    # mkForce = priority 50, mkOverride 50 = same priority, last wins.
+    # Use lib.mkOverride 49 to beat mkForce false set in configuration.nix.
+    publish = {
+      enable               = true;
+      addresses            = true;
+      workstation          = true;
+      userServices         = true;
+    };
+    nssmdns4   = true;   # resolve *.local via NSS on IPv4
+    nssmdns6   = true;   # resolve *.local via NSS on IPv6
+    openFirewall = true;  # opens UDP 5353 for mDNS
+  };
+
+  ############################################################
+  # LOCALSEND — autostart as a user systemd service
+  ############################################################
+  # Runs LocalSend in the background so it is always reachable
+  # from the mobile app without launching it manually each time.
+  systemd.user.services.localsend = {
+    description = "LocalSend — LAN file sharing";
+    wantedBy    = [ "graphical-session.target" ];
+    after       = [ "graphical-session.target" ];
+    partOf      = [ "graphical-session.target" ];
+
+    serviceConfig = {
+      Type            = "simple";
+      ExecStart       = "${pkgs.localsend}/bin/localsend --headless";
+      Restart         = "on-failure";
+      RestartSec      = "5s";
+    };
+  };
+}
