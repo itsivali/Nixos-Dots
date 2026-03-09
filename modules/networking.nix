@@ -46,20 +46,23 @@
         53317   # LocalSend — device discovery (multicast)
       ];
 
-      # ── Multicast / mDNS for LocalSend discovery ─────────────────────────────
-      # LocalSend uses UDP multicast (224.0.0.167:53317) so mobile devices can
-      # find this machine on the LAN without manual IP entry.
-      # extraCommands is run after nftables/iptables rules are loaded.
+      # ── Multicast for LocalSend discovery ────────────────────────────────────
+      # LocalSend peers announce themselves via UDP multicast to 224.0.0.167:53317.
+      # These packets are destined to the multicast group address, NOT the
+      # machine's own IP, so allowedUDPPorts alone does not match them —
+      # NixOS firewall drops non-local destination addresses before the port
+      # rules are even evaluated.
+      #
+      # Solution: insert at the very top of INPUT (position 1) so the ACCEPT
+      # fires before nixos-fw gets a chance to inspect the destination address.
       extraCommands = ''
-        # Accept multicast packets destined for LocalSend's group address
-        iptables -A nixos-fw -d 224.0.0.167/32 -p udp --dport 53317 -j ACCEPT
-        ip6tables -A nixos-fw -d ff02::1/128    -p udp --dport 53317 -j ACCEPT || true
+        iptables  -I INPUT 1 -d 224.0.0.167/32 -p udp --dport 53317 -j ACCEPT
+        ip6tables -I INPUT 1 -d ff02::1/128    -p udp --dport 53317 -j ACCEPT 2>/dev/null || true
       '';
 
-      # Clean up the rules added above on firewall stop/restart
       extraStopCommands = ''
-        iptables  -D nixos-fw -d 224.0.0.167/32 -p udp --dport 53317 -j ACCEPT 2>/dev/null || true
-        ip6tables -D nixos-fw -d ff02::1/128    -p udp --dport 53317 -j ACCEPT 2>/dev/null || true
+        iptables  -D INPUT -d 224.0.0.167/32 -p udp --dport 53317 -j ACCEPT 2>/dev/null || true
+        ip6tables -D INPUT -d ff02::1/128    -p udp --dport 53317 -j ACCEPT 2>/dev/null || true
       '';
     };
   };
