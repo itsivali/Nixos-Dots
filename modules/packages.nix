@@ -27,7 +27,7 @@
     gnumake
     pkg-config
     # Nix helpers
-    nixfmt-rfc-style    
+    nixfmt
     nix-output-monitor
     nvd
     # Diagnostics
