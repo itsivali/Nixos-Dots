@@ -272,18 +272,18 @@ in
       "audio"
       "video"
     ];
-    # Fish is the interactive login shell.
-    # Zsh remains available (and configured with history) — see modules/terminal.nix.
-    shell = pkgs.fish;
+    # Zsh is the login shell — configured in modules/terminal.nix
+    # (powerlevel10k, syntax highlighting, autosuggestions, fastfetch, aliases).
+    shell = pkgs.zsh;
   };
 
   ############################################################
   # SHELLS
-  # Both fish and zsh are enabled system-wide so either can be
-  # used in terminals, scripts, or switched to with `zsh`.
+  # Zsh is the system default (users.defaultUserShell in modules/terminal.nix).
+  # Fish is still enabled so fish scripts and any remaining fish sessions work.
   ############################################################
 
-  # Fish — interactive default
+  # Fish — kept available but no longer the login shell
   programs.fish.enable = true;
 
   # Zsh — kept for scripting, history sharing, and personal preference
