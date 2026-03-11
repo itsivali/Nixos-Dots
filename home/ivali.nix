@@ -561,16 +561,14 @@ in
       libreOfficePkg
 
       github-desktop
-      bruno
+      signal-desktop
       dbeaver-bin
       filezilla
       meld
-      flameshot
+      bluemail
 
       gnome-extension-manager
       gnome-tweaks
-
-      thunderbird
       obsidian
       vlc
       remmina
