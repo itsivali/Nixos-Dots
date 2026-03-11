@@ -18,6 +18,13 @@ narinfo-cache-negative-ttl = 0
 fallback = true
 "
 
+    # Git 2.35+ refuses to access repos not owned by the current user (root).
+    # /etc/nixos is a symlink into /home/ivali/Nixos-Dots which is owned by ivali.
+    # Declare it safe for this invocation so nix flake evaluation can read git metadata.
+    export GIT_CONFIG_COUNT=1
+    export GIT_CONFIG_KEY_0=safe.directory
+    export GIT_CONFIG_VALUE_0=/home/ivali/Nixos-Dots
+
     echo "==> [nightly] $(date -Is) nixos-rebuild switch /etc/nixos#prague"
     exec ${pkgs.util-linux}/bin/flock -n /run/nixos-nightly-rebuild.lock \
       ${pkgs.nixos-rebuild}/bin/nixos-rebuild switch \
@@ -272,18 +279,18 @@ in
       "audio"
       "video"
     ];
-    # Zsh is the login shell — configured in modules/terminal.nix
-    # (powerlevel10k, syntax highlighting, autosuggestions, fastfetch, aliases).
-    shell = pkgs.zsh;
+    # Fish is the interactive login shell.
+    # Zsh remains available (and configured with history) — see modules/terminal.nix.
+    shell = pkgs.fish;
   };
 
   ############################################################
   # SHELLS
-  # Zsh is the system default (users.defaultUserShell in modules/terminal.nix).
-  # Fish is still enabled so fish scripts and any remaining fish sessions work.
+  # Both fish and zsh are enabled system-wide so either can be
+  # used in terminals, scripts, or switched to with `zsh`.
   ############################################################
 
-  # Fish — kept available but no longer the login shell
+  # Fish — interactive default
   programs.fish.enable = true;
 
   # Zsh — kept for scripting, history sharing, and personal preference
