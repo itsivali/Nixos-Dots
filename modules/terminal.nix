@@ -87,11 +87,6 @@
       bindkey "^[[C" forward-char          # Right arrow accepts one char
       bindkey "^[f"  forward-word          # Alt-F accepts one word
 
-      # ── fastfetch on every interactive terminal open ───────────────────────
-      if [[ $- == *i* ]] && [[ -z "$NO_FASTFETCH" ]] && command -v fastfetch >/dev/null 2>&1; then
-        fastfetch
-      fi
-
       # ── Abbreviation-style aliases (zsh has no native abbrs; use aliases) ─
 
       # Navigation

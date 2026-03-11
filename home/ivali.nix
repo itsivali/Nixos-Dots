@@ -528,6 +528,11 @@ in
   dconf.enable = true;
   dconf.settings = {
     "org/gnome/shell" = { development-tools = true; };
+    # Force GNOME Console (kgx) to use zsh regardless of login shell in /etc/passwd
+    "org/gnome/Console" = {
+      shell = [ "/run/current-system/sw/bin/zsh" ];
+    };
+
     "org/gnome/desktop/wm/keybindings" = {
       close = [ "<Super>q" "<Alt>F4" ];
     };
