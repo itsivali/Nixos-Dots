@@ -534,7 +534,7 @@ in
     };
 
     "org/gnome/desktop/wm/keybindings" = {
-      close = [ "<Super>q" "<Alt>F4" ];
+      close = [ "<Super>q" ];
     };
 
     "org/gnome/settings-daemon/plugins/media-keys" = {
@@ -545,7 +545,7 @@ in
     "${kb1Key}" = { name = "Terminal";             command = "${openTerminal}/bin/open-terminal";         binding = "<Control>period"; };
     "${kb2Key}" = { name = "Chrome";               command = "${openChrome}/bin/open-chrome";             binding = "<Control>b";    };
     "${kb3Key}" = { name = "VS Code";              command = "${openVSCode}/bin/open-vscode";             binding = "<Super>c";      };
-    "${kb4Key}" = { name = "Kill focused window";  command = "${killActiveWindow}/bin/kill-active-window"; binding = "<Super>Escape"; };
+    "${kb4Key}" = { name = "Kill focused window";  command = "${killActiveWindow}/bin/kill-active-window"; binding = "<Alt>F4"; };
     "${kb5Key}" = { name = "Reboot NOW";           command = "${rebootNow}/bin/reboot-now";               binding = "<Super>z";      };
     "${kb6Key}" = { name = "Shutdown NOW";         command = "${poweroffNow}/bin/poweroff-now";           binding = "<Super>x";      };
   };
