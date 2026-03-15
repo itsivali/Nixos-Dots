@@ -4,7 +4,6 @@
   environment.systemPackages = with pkgs; [
     act          # run GitHub Actions locally
     goreleaser
-
     hadolint
     shellcheck
     shfmt

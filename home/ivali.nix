@@ -66,7 +66,6 @@ let
 
   openVSCode = pkgs.writeShellScriptBin "open-vscode" ''
     set -euo pipefail
-    # The `code` binary is the Wayland-native wrapper installed by vscode.nix
     if command -v code   >/dev/null 2>&1; then exec code;   fi
     if command -v codium >/dev/null 2>&1; then exec codium; fi
     exit 0
@@ -94,8 +93,6 @@ let
   # ═══════════════════════════════════════════════════════════════════════════
   # Flake management scripts
   # ═══════════════════════════════════════════════════════════════════════════
-
-  # Check flake for evaluation errors
   nixosFlakeCheck = pkgs.writeShellScriptBin "nixos-flake-check" ''
     set -euo pipefail
     echo "==> Checking flake in ${repoDir} …"
@@ -103,7 +100,6 @@ let
     ${pkgs.nix}/bin/nix flake check --accept-flake-config
   '';
 
-  # Update ALL flake inputs to their latest revision
   nixosFlakeUpdate = pkgs.writeShellScriptBin "nixos-flake-update" ''
     set -euo pipefail
     echo "==> Updating all flake inputs in ${repoDir} …"
@@ -117,7 +113,6 @@ let
     ${pkgs.git}/bin/git status --porcelain || true
   '';
 
-  # Update a single named flake input  (usage: nixos-update-input nixpkgs)
   nixosUpdateInput = pkgs.writeShellScriptBin "nixos-update-input" ''
     set -euo pipefail
     if [[ $# -lt 1 ]]; then
@@ -131,14 +126,12 @@ let
     echo "==> Done. Run 'rebuild' to activate."
   '';
 
-  # Show flake metadata / input revisions
   nixosShowInputs = pkgs.writeShellScriptBin "nixos-inputs" ''
     set -euo pipefail
     cd "${repoDir}"
     ${pkgs.nix}/bin/nix flake metadata --accept-flake-config
   '';
 
-  # Show available flake outputs
   nixosShowOutputs = pkgs.writeShellScriptBin "nixos-outputs" ''
     set -euo pipefail
     cd "${repoDir}"
@@ -148,8 +141,6 @@ let
   # ═══════════════════════════════════════════════════════════════════════════
   # NixOS rebuild scripts
   # ═══════════════════════════════════════════════════════════════════════════
-
-  # Activate new config
   nixosSwitch = pkgs.writeShellScriptBin "nixos-switch" ''
     set -euo pipefail
     if [[ $EUID -ne 0 ]] && ! sudo -n true 2>/dev/null; then
@@ -161,7 +152,6 @@ let
       --accept-flake-config "$@"
   '';
 
-  # Build without activating
   nixosBuild = pkgs.writeShellScriptBin "nixos-build" ''
     set -euo pipefail
     echo "==> nixos-rebuild build --flake ${flakeRef} …"
@@ -170,7 +160,6 @@ let
       --accept-flake-config "$@"
   '';
 
-  # Build and activate on next boot only
   nixosBoot = pkgs.writeShellScriptBin "nixos-boot" ''
     set -euo pipefail
     echo "==> nixos-rebuild boot --flake ${flakeRef} …"
@@ -179,7 +168,6 @@ let
       --accept-flake-config "$@"
   '';
 
-  # Dry-run: show derivations without building
   nixosDryRun = pkgs.writeShellScriptBin "nixos-dry" ''
     set -euo pipefail
     echo "==> nixos-rebuild dry-run --flake ${flakeRef} …"
@@ -188,7 +176,6 @@ let
       --accept-flake-config "$@"
   '';
 
-  # Build and test (activate temporarily, reverted on reboot)
   nixosTest = pkgs.writeShellScriptBin "nixos-test" ''
     set -euo pipefail
     echo "==> nixos-rebuild test --flake ${flakeRef} …"
@@ -197,14 +184,12 @@ let
       --accept-flake-config "$@"
   '';
 
-  # Roll back to the previous generation
   nixosRollback = pkgs.writeShellScriptBin "nixos-rollback" ''
     set -euo pipefail
     echo "==> Rolling back to previous NixOS generation …"
     sudo ${pkgs.nixos-rebuild}/bin/nixos-rebuild switch --rollback
   '';
 
-  # Diff current system vs what would be built
   nixosDiff = pkgs.writeShellScriptBin "nixos-diff" ''
     set -euo pipefail
     echo "==> Building to ./result for diff …"
@@ -216,7 +201,6 @@ let
     ${pkgs.nix}/bin/nix store diff-closures /run/current-system ./result
   '';
 
-  # List NixOS system generations
   nixosGenerations = pkgs.writeShellScriptBin "nixos-generations" ''
     set -euo pipefail
     echo "==> NixOS system generations:"
@@ -226,8 +210,6 @@ let
   # ═══════════════════════════════════════════════════════════════════════════
   # Full update pipeline
   # ═══════════════════════════════════════════════════════════════════════════
-
-  # update inputs → check → switch
   nixosUpdate = pkgs.writeShellScriptBin "nixos-update" ''
     set -euo pipefail
     nixos-flake-update
@@ -235,7 +217,6 @@ let
     nixos-switch
   '';
 
-  # update inputs → check → switch → home-manager → GC
   nixosUpgradeAll = pkgs.writeShellScriptBin "nixos-upgrade-all" ''
     set -euo pipefail
     echo "════════════════════════════════"
@@ -266,8 +247,6 @@ let
   # ═══════════════════════════════════════════════════════════════════════════
   # Garbage collection & store maintenance
   # ═══════════════════════════════════════════════════════════════════════════
-
-  # Aggressive GC: delete ALL old generations (system + user profiles)
   nixosGC = pkgs.writeShellScriptBin "nixos-gc" ''
     set -euo pipefail
     echo "==> Collecting garbage (all old generations) …"
@@ -276,7 +255,6 @@ let
     echo "==> Done."
   '';
 
-  # Soft GC: keep generations newer than N days (default 14)
   nixosGCOld = pkgs.writeShellScriptBin "nixos-gc-old" ''
     set -euo pipefail
     DAYS="''${1:-14}"
@@ -286,7 +264,6 @@ let
     echo "==> Done."
   '';
 
-  # Dry-run GC: show what WOULD be deleted without removing anything
   nixosGCDry = pkgs.writeShellScriptBin "nixos-gc-dry" ''
     set -euo pipefail
     echo "==> Dry-run GC (nothing will be deleted) …"
@@ -294,7 +271,6 @@ let
     ${pkgs.nix}/bin/nix-collect-garbage     -d --dry-run 2>&1 || true
   '';
 
-  # Hard-link identical files in /nix/store (saves disk space)
   nixosOptimise = pkgs.writeShellScriptBin "nixos-optimise" ''
     set -euo pipefail
     echo "==> Optimising nix store (hard-linking identical files) …"
@@ -302,7 +278,6 @@ let
     echo "==> Done."
   '';
 
-  # GC + optimise in one shot
   nixosClean = pkgs.writeShellScriptBin "nixos-clean" ''
     set -euo pipefail
     nixos-gc
@@ -311,7 +286,6 @@ let
     du -sh /nix/store 2>/dev/null || true
   '';
 
-  # Show disk usage of /nix/store
   nixosStoreSize = pkgs.writeShellScriptBin "nixos-store-size" ''
     set -euo pipefail
     echo "==> /nix/store usage:"
@@ -324,42 +298,35 @@ let
   # ═══════════════════════════════════════════════════════════════════════════
   # Home Manager scripts
   # ═══════════════════════════════════════════════════════════════════════════
-
-  # Apply home-manager config (standalone mode)
   hmSwitch = pkgs.writeShellScriptBin "hm-switch" ''
     set -euo pipefail
     echo "==> home-manager switch --flake ${hmRef} …"
     home-manager switch --flake "${hmRef}" "$@"
   '';
 
-  # Build home-manager without activating
   hmBuild = pkgs.writeShellScriptBin "hm-build" ''
     set -euo pipefail
     echo "==> home-manager build --flake ${hmRef} …"
     home-manager build --flake "${hmRef}" "$@"
   '';
 
-  # Show Home Manager release notes / changelog for current generation
   hmNews = pkgs.writeShellScriptBin "hm-news" ''
     set -euo pipefail
     home-manager news --flake "${hmRef}"
   '';
 
-  # List packages managed by Home Manager
   hmPackages = pkgs.writeShellScriptBin "hm-packages" ''
     set -euo pipefail
     echo "==> Home Manager packages:"
     home-manager packages
   '';
 
-  # List Home Manager generations
   hmGenerations = pkgs.writeShellScriptBin "hm-generations" ''
     set -euo pipefail
     echo "==> Home Manager generations:"
     home-manager generations
   '';
 
-  # Remove old Home Manager generations (keeps current)
   hmGC = pkgs.writeShellScriptBin "hm-gc" ''
     set -euo pipefail
     echo "==> Removing old Home Manager generations …"
@@ -368,7 +335,6 @@ let
     echo "==> Done."
   '';
 
-  # Roll back to the previous Home Manager generation
   hmRollback = pkgs.writeShellScriptBin "hm-rollback" ''
     set -euo pipefail
     PREV=$(home-manager generations | awk 'NR==2{print $NF}')
@@ -383,7 +349,6 @@ let
   # ═══════════════════════════════════════════════════════════════════════════
   # Dev / formatting scripts
   # ═══════════════════════════════════════════════════════════════════════════
-
   nixosFormat = pkgs.writeShellScriptBin "nixos-format" ''
     set -euo pipefail
     echo "==> Formatting all .nix files in ${repoDir} …"
@@ -482,8 +447,6 @@ let
   '';
 in
 {
-  # Pull VS Code config (extensions, settings, keybindings, LSP backends)
-  # from its own module to keep this file manageable.
   imports = [ ./vscode.nix ];
 
   home.username = "ivali";
@@ -498,23 +461,52 @@ in
     VISUAL = "code";
   };
 
-  # Put your repo p10k into ~/.p10k.zsh
   home.file.".p10k.zsh".source = ./p10k.zsh;
 
-  # Manage ~/.zshrc directly (NO programs.zsh module)
+  # ── ~/.zshrc ───────────────────────────────────────────────────────────────
+  # CHANGED: Added Powerlevel10k instant prompt block at the very top.
+  #
+  # The instant prompt MUST be the first thing sourced — before any console
+  # output (including fastfetch). It caches the initial prompt rendering so the
+  # terminal is usable before zsh finishes loading all plugins.
+  #
+  # Rules for the instant prompt block:
+  #   1. Must appear before ANY output-producing command.
+  #   2. fastfetch is fine AFTER the block — p10k.zsh already sets
+  #      POWERLEVEL9K_INSTANT_PROMPT=quiet so fastfetch output won't trigger
+  #      a warning.
+  #   3. The theme is sourced once here. /etc/zshrc (terminal.nix) also sources
+  #      it; the second source is a no-op because p10k guards against re-entry.
   home.file.".zshrc".text = ''
-    # Managed by Home Manager – do not edit by hand
-    # Suppress fastfetch with:  NO_FASTFETCH=1 zsh
+    # Managed by Home Manager – do not edit by hand.
+
+    # ── Powerlevel10k instant prompt ──────────────────────────────────────────
+    # MUST be first: caches the prompt before zsh finishes initialising.
+    # Requires a writable $XDG_CACHE_HOME (~/.cache) — always available for
+    # normal users. If the cache file doesn't exist yet (first run), this block
+    # is silently skipped and p10k builds the cache on the way out.
+    if [[ -r "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh" ]]; then
+      source "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh"
+    fi
+
+    # ── fastfetch (after instant prompt so it doesn't break cache seeding) ────
+    # Suppress with:  NO_FASTFETCH=1 zsh
     if [[ -o interactive ]] && [[ -z "''${NO_FASTFETCH:-}" ]] && command -v fastfetch >/dev/null 2>&1; then
       fastfetch
     fi
 
+    # ── Aliases ───────────────────────────────────────────────────────────────
     ${aliasesText}
 
-    # Powerlevel10k
-    if [[ -r "${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme" ]]; then
-      source "${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme"
+    # ── Powerlevel10k theme ───────────────────────────────────────────────────
+    # Guard against double-sourcing in case /etc/zshrc already loaded it.
+    if [[ -z "''${POWERLEVEL9K_PROMPT_CHAR_OK_VIINS+x}" ]]; then
+      if [[ -r "${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme" ]]; then
+        source "${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme"
+      fi
     fi
+
+    # ── p10k config ───────────────────────────────────────────────────────────
     [[ -f "$HOME/.p10k.zsh" ]] && source "$HOME/.p10k.zsh"
   '';
 
@@ -528,7 +520,6 @@ in
   dconf.enable = true;
   dconf.settings = {
     "org/gnome/shell" = { development-tools = true; };
-    # Force GNOME Console (kgx) to use zsh regardless of login shell in /etc/passwd
     "org/gnome/Console" = {
       shell = [ "/run/current-system/sw/bin/zsh" ];
     };
@@ -541,13 +532,13 @@ in
       custom-keybindings = [ kb0Path kb1Path kb2Path kb3Path kb4Path kb5Path kb6Path ];
     };
 
-    "${kb0Key}" = { name = "Files";                command = "${openFiles}/bin/open-files";               binding = "<Super>e";      };
-    "${kb1Key}" = { name = "Terminal";             command = "${openTerminal}/bin/open-terminal";         binding = "<Control>period"; };
-    "${kb2Key}" = { name = "Chrome";               command = "${openChrome}/bin/open-chrome";             binding = "<Control>b";    };
-    "${kb3Key}" = { name = "VS Code";              command = "${openVSCode}/bin/open-vscode";             binding = "<Super>c";      };
-    "${kb4Key}" = { name = "Kill focused window";  command = "${killActiveWindow}/bin/kill-active-window"; binding = "<Alt>F4"; };
-    "${kb5Key}" = { name = "Reboot NOW";           command = "${rebootNow}/bin/reboot-now";               binding = "<Super>z";      };
-    "${kb6Key}" = { name = "Shutdown NOW";         command = "${poweroffNow}/bin/poweroff-now";           binding = "<Super>x";      };
+    "${kb0Key}" = { name = "Files";                command = "${openFiles}/bin/open-files";                binding = "<Super>e";       };
+    "${kb1Key}" = { name = "Terminal";             command = "${openTerminal}/bin/open-terminal";           binding = "<Control>period"; };
+    "${kb2Key}" = { name = "Chrome";               command = "${openChrome}/bin/open-chrome";               binding = "<Control>b";      };
+    "${kb3Key}" = { name = "VS Code";              command = "${openVSCode}/bin/open-vscode";               binding = "<Super>c";        };
+    "${kb4Key}" = { name = "Kill focused window";  command = "${killActiveWindow}/bin/kill-active-window";  binding = "<Alt>F4";         };
+    "${kb5Key}" = { name = "Reboot NOW";           command = "${rebootNow}/bin/reboot-now";                 binding = "<Super>z";        };
+    "${kb6Key}" = { name = "Shutdown NOW";         command = "${poweroffNow}/bin/poweroff-now";             binding = "<Super>x";        };
   };
 
   # ── Packages ──────────────────────────────────────────────────────────────
@@ -564,19 +555,14 @@ in
       # GUI apps
       chromePkg
       libreOfficePkg
-
-      github-desktop
       signal-desktop
-      dbeaver-bin
       filezilla
-      meld
-      bluemail
-
       gnome-extension-manager
       gnome-tweaks
       obsidian
       vlc
       remmina
+      localsend
 
       # ── Keyboard helpers ─────────────────────────────────────────────────
       openFiles

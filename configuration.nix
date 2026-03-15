@@ -1,5 +1,5 @@
 # configuration.nix
-# Host: prague (GNOME workstation, web-dev + devops handled by modules/* and home/*)
+# Host: prague (GNOME workstation, web-dev + devops handled by modules/* and home/*),
 { config, pkgs, lib, ... }:
 
 let
@@ -20,7 +20,6 @@ fallback = true
 
     # Git 2.35+ refuses to access repos not owned by the current user (root).
     # /etc/nixos is a symlink into /home/ivali/Nixos-Dots which is owned by ivali.
-    # Declare it safe for this invocation so nix flake evaluation can read git metadata.
     export GIT_CONFIG_COUNT=1
     export GIT_CONFIG_KEY_0=safe.directory
     export GIT_CONFIG_VALUE_0=/home/ivali/Nixos-Dots
@@ -96,10 +95,13 @@ in
     };
 
     kernelPackages = pkgs.linuxPackages_latest;
-    kernelModules = [ "kvm-amd" ];
+    # NOTE: boot.kernelModules = [ "kvm-amd" ] intentionally removed here.
+    # It is already declared in hardware-configuration.nix — having it in both
+    # places produces a harmless merge but adds confusion.
     tmp.cleanOnBoot = true;
 
     kernel.sysctl = {
+      # Performance tuning (security hardening lives in modules/security.nix)
       "vm.swappiness"                  = 10;
       "vm.vfs_cache_pressure"          = 50;
       "vm.dirty_background_ratio"      = 5;
@@ -134,10 +136,12 @@ in
   ############################################################
   # NETWORKING
   ############################################################
+  # hostName, timeServers, and NM options live in modules/networking.nix.
+  # Only the bare minimum is declared here to keep things DRY.
   networking = {
-    hostName = "prague";
+    hostName       = "prague";
     networkmanager.enable = true;
-    timeServers = [ "time.cloudflare.com" "time.google.com" ];
+    timeServers    = [ "time.cloudflare.com" "time.google.com" ];
   };
 
   ############################################################
@@ -279,21 +283,20 @@ in
       "audio"
       "video"
     ];
-    # Fish is the interactive login shell.
-    # Zsh remains available (and configured with history) — see modules/terminal.nix.
-    shell = pkgs.fish;
+    # CHANGED: fish → zsh.
+    # The entire shell setup (terminal.nix, ivali.nix, GNOME Console dconf)
+    # targets zsh. Fish was the original shell but all config has moved to zsh.
+    shell = pkgs.zsh;
   };
 
   ############################################################
   # SHELLS
-  # Both fish and zsh are enabled system-wide so either can be
-  # used in terminals, scripts, or switched to with `zsh`.
   ############################################################
 
-  # Fish — interactive default
+  # Fish — kept for compatibility / scripts that invoke fish explicitly
   programs.fish.enable = true;
 
-  # Zsh — kept for scripting, history sharing, and personal preference
+  # Zsh — primary interactive shell (configured in modules/terminal.nix)
   programs.zsh = {
     enable = true;
     enableCompletion = true;
@@ -311,7 +314,7 @@ in
   # TESTING SERVICES DEFAULTS (opt-in; actual logic in modules/testing.nix)
   ############################################################
   testing = {
-    enable      = false;
+    enable       = false;
     openFirewall = false;
   };
 
@@ -326,9 +329,6 @@ in
       allowed-users  = [ "@wheel" ];
       trusted-users  = [ "root" "@wheel" ];
 
-      # ── Binary caches ───────────────────────────────────────────────────
-      # Three substituters so Nix tries the next one if the first is slow.
-      # nixpkgs-unfree carries pre-built unfree packages (vscode, chrome …).
       substituters = [
         "https://cache.nixos.org"
         "https://nix-community.cachix.org"
@@ -341,33 +341,12 @@ in
         "nixpkgs-unfree.cachix.org-1:hqvoInulhbV4nJ9yJOEr+4wxRDkznGAW2xIWLJLCDdo="
       ];
 
-      # ── Download tuning for high-latency / unreliable links ─────────────
-      # 25 parallel connections — Nix races substituters and uses whichever
-      # responds first, so more connections = faster on flaky links.
       http-connections           = 25;
-
-      # Disable HTTP/2 — it multiplexes over a single TCP connection which
-      # amplifies packet-loss pain; plain HTTP/1.1 per-connection is more
-      # resilient on high-latency African routes.
       http2                      = false;
-
-      # Fail a *connection attempt* quickly (10 s) so Nix retries rather
-      # than waiting 60 s per attempt doing nothing.
       connect-timeout            = 10;
-
-      # Abort a download that stalls (0 bytes) for more than 15 s and retry.
-      # This is the key fix — the old config had no stall timeout so each
-      # attempt hung for the full 60 s connect-timeout with 0 bytes received.
       stalled-download-timeout   = 15;
-
-      # Only retry 5 times per path — with fast fail + stall detection,
-      # 5 attempts across 3 substituters is plenty before falling back.
       download-attempts          = 5;
-
-      # If all substituters fail for a path, build it locally from source
-      # rather than aborting the whole rebuild.
       fallback                   = true;
-
       narinfo-cache-negative-ttl = 0;
     };
 

@@ -38,8 +38,8 @@
     ncdu
     # Editors
     vim
-    # Sharing
-    localsend
+
+
   ];
 
   programs.nix-ld.enable = true;
