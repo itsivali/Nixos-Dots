@@ -141,6 +141,17 @@
       alias hmgen="hm-generations"
       alias hmgc="hm-gc"
       alias hmroll="hm-rollback"
+
+      # ClamAV
+      alias cvscan="sudo systemctl start clamav-scan"                               # trigger daily scan now
+      alias cvwatch="journalctl -u clamav-scan -f"                                  # watch scan live
+      alias cvlog="journalctl -u clamav-scan --since today"                         # today's scan results
+      alias cvupdate="sudo systemctl start clamav-freshclam"                        # update definitions now
+      alias cvstatus="systemctl status clamav-daemon clamav-freshclam clamav-scan"  # all service statuses
+      alias cvtimer="systemctl list-timers clamav-scan"                             # next scheduled scan
+      alias cvquarantine="ls -lah /var/lib/clamav/quarantine/"                      # list quarantined files
+      alias cvscan-home="sudo clamscan --recursive --infected --suppress-ok-results /home"  # quick /home scan
+      alias cvscan-etc="sudo clamscan --recursive --infected --suppress-ok-results /etc"    # quick /etc scan
     '';
   };
 
