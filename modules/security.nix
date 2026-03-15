@@ -6,20 +6,19 @@ let
 in
 {
   # ── Firewall ────────────────────────────────────────────────────────────────
-  # CHANGED: Added logRefusedConnections = true for better audit trail.
   networking.firewall = {
     enable                = lib.mkDefault true;
     allowedTCPPorts       = lib.mkDefault [ ];
     allowedUDPPorts       = lib.mkDefault [ ];
     allowPing             = lib.mkDefault true;
-    logRefusedConnections = lib.mkDefault true;   # was false — improves audit trail
+    logRefusedConnections = lib.mkDefault true;
     logRefusedPackets     = lib.mkDefault false;
     rejectPackets         = lib.mkDefault false;
   };
 
-  # ── nftables (ADDED) ────────────────────────────────────────────────────────
-  # Enable nftables explicitly so `nft` binary is on PATH and Lynis can detect
-  # the firewall (FIRE-4590 false-positive fix).
+  # ── nftables ────────────────────────────────────────────────────────────────
+  # Enables nftables explicitly so `nft` is on PATH and Lynis can detect the
+  # firewall (fixes FIRE-4590 false-positive).
   networking.nftables.enable = true;
 
   # ── AppArmor ────────────────────────────────────────────────────────────────
@@ -63,9 +62,9 @@ in
 
   # ── Fail2ban (only if SSH is enabled) ──────────────────────────────────────
   services.fail2ban = lib.mkIf sshEnabled {
-    enable    = true;
-    maxretry  = 3;
-    bantime   = "1h";
+    enable   = true;
+    maxretry = 3;
+    bantime  = "1h";
     bantime-increment = {
       enable  = true;
       maxtime = "168h";
@@ -79,9 +78,9 @@ in
     ];
   };
 
-  # ── Kernel audit daemon (ADDED — ACCT-9628) ─────────────────────────────────
+  # ── Kernel audit daemon (ACCT-9628) ─────────────────────────────────────────
   # Provides a kernel-level audit trail for file access, privilege use, and
-  # syscalls. Required by Lynis ACCT-9628.
+  # syscalls.
   security.auditd.enable = true;
   security.audit = {
     enable = true;
@@ -92,103 +91,89 @@ in
       "-w /etc/passwd  -p wa -k passwd_changes"
       "-w /etc/shadow  -p wa -k shadow_changes"
       "-w /etc/sudoers -p wa -k sudoers_changes"
-      # Module loading (watch for unexpected kernel module loads)
-      "-w /sbin/insmod -p x -k module_load"
+      # Kernel module loading
+      "-w /sbin/insmod   -p x -k module_load"
       "-w /sbin/modprobe -p x -k module_load"
     ];
   };
 
-  # ── Unused network protocol blacklist (ADDED — NETW-3200) ──────────────────
+  # ── Unused network protocol blacklist (NETW-3200) ──────────────────────────
   # dccp, sctp, rds, tipc are loaded but not needed on this workstation.
-  # Blacklisting prevents them from being loaded at all (not just disabled).
   boot.blacklistedKernelModules = [
-    "dccp"    # Datagram Congestion Control Protocol
-    "sctp"    # Stream Control Transmission Protocol
-    "rds"     # Reliable Datagram Sockets
-    "tipc"    # Transparent Inter-Process Communication
+    "dccp"
+    "sctp"
+    "rds"
+    "tipc"
   ];
 
   # ── Kernel sysctl hardening ─────────────────────────────────────────────────
-  # CHANGED: rp_filter 2→1 (Lynis prefers strict=1 over loose=2)
-  # ADDED:   dev.tty.ldisc_autoload, fs.suid_dumpable, kernel.sysrq,
-  #          net.*.default.accept_redirects (were missing — KRNL-6000)
   boot.kernel.sysctl = {
     # Source routing
-    "net.ipv4.conf.all.accept_source_route"     = 0;
-    "net.ipv6.conf.all.accept_source_route"     = 0;
+    "net.ipv4.conf.all.accept_source_route"      = 0;
+    "net.ipv6.conf.all.accept_source_route"      = 0;
 
     # ICMP redirects — all interfaces
-    "net.ipv4.conf.all.accept_redirects"        = 0;
-    "net.ipv4.conf.all.secure_redirects"        = 0;
-    "net.ipv6.conf.all.accept_redirects"        = 0;
-    "net.ipv4.conf.all.send_redirects"          = 0;
+    "net.ipv4.conf.all.accept_redirects"         = 0;
+    "net.ipv4.conf.all.secure_redirects"         = 0;
+    "net.ipv6.conf.all.accept_redirects"         = 0;
+    "net.ipv4.conf.all.send_redirects"           = 0;
 
-    # ICMP redirects — default (ADDED: was missing, flagged by KRNL-6000)
-    "net.ipv4.conf.default.accept_redirects"    = 0;
-    "net.ipv6.conf.default.accept_redirects"    = 0;
+    # ICMP redirects — default interface (KRNL-6000)
+    "net.ipv4.conf.default.accept_redirects"     = 0;
+    "net.ipv6.conf.default.accept_redirects"     = 0;
 
     # TCP flood protection
-    "net.ipv4.tcp_syncookies"                   = 1;
-    "net.ipv4.tcp_syn_retries"                  = 2;
-    "net.ipv4.tcp_synack_retries"               = 2;
-    "net.ipv4.tcp_max_syn_backlog"              = 4096;
+    "net.ipv4.tcp_syncookies"                    = 1;
+    "net.ipv4.tcp_syn_retries"                   = 2;
+    "net.ipv4.tcp_synack_retries"                = 2;
+    "net.ipv4.tcp_max_syn_backlog"               = 4096;
 
-    # Reverse path filtering — CHANGED: 2 (loose) → 1 (strict)
-    # Docker sets net.ipv4.conf.all.forwarding=1 which technically requires
-    # rp_filter=0 or 2 on docker0, but strict=1 on `all` + `default` with
-    # Docker's own per-interface override works fine in practice.
-    "net.ipv4.conf.all.rp_filter"               = 1;
-    "net.ipv4.conf.default.rp_filter"           = 1;
+    # Reverse path filtering — strict mode (KRNL-6000)
+    # Docker sets per-interface overrides at runtime so this is safe.
+    "net.ipv4.conf.all.rp_filter"                = 1;
+    "net.ipv4.conf.default.rp_filter"            = 1;
 
     # ICMP
-    "net.ipv4.icmp_echo_ignore_broadcasts"      = 1;
+    "net.ipv4.icmp_echo_ignore_broadcasts"       = 1;
     "net.ipv4.icmp_ignore_bogus_error_responses" = 1;
 
     # Martian packet logging
-    "net.ipv4.conf.all.log_martians"            = 1;
-    "net.ipv4.conf.default.log_martians"        = 1;
+    "net.ipv4.conf.all.log_martians"             = 1;
+    "net.ipv4.conf.default.log_martians"         = 1;
 
     # Kernel information leaks
-    "kernel.dmesg_restrict"                     = 1;
-    "kernel.kptr_restrict"                      = 2;
+    "kernel.dmesg_restrict"                      = 1;
+    "kernel.kptr_restrict"                       = 2;
 
     # eBPF hardening
-    "kernel.unprivileged_bpf_disabled"          = 1;
-    "net.core.bpf_jit_harden"                   = 2;
+    "kernel.unprivileged_bpf_disabled"           = 1;
+    "net.core.bpf_jit_harden"                    = 2;
 
     # Filesystem hardening
-    "fs.protected_hardlinks"                    = 1;
-    "fs.protected_symlinks"                     = 1;
-    "fs.protected_fifos"                        = 2;
-    "fs.protected_regular"                      = 2;
+    "fs.protected_hardlinks"                     = 1;
+    "fs.protected_symlinks"                      = 1;
+    "fs.protected_fifos"                         = 2;
+    "fs.protected_regular"                       = 2;
 
-    # ADDED: TTY line discipline autoload (KRNL-6000)
-    # Prevents unprivileged users from loading arbitrary TTY line disciplines.
-    "dev.tty.ldisc_autoload"                    = 0;
+    # TTY line discipline autoload (KRNL-6000)
+    "dev.tty.ldisc_autoload"                     = 0;
 
-    # ADDED: SUID core dumps (KRNL-6000)
-    # 0 = no core dumps from setuid processes (safest).
-    # 2 (current) means "dump to suid-dumpable-path" — less safe.
-    "fs.suid_dumpable"                          = 0;
+    # SUID core dumps (KRNL-6000)
+    "fs.suid_dumpable"                           = 0;
 
-    # ADDED: Magic SysRQ (KRNL-6000)
-    # 0 = fully disabled on a workstation (re-enable temporarily if needed
-    # with: echo 1 | sudo tee /proc/sys/kernel/sysrq)
-    "kernel.sysrq"                              = 0;
+    # Magic SysRQ (KRNL-6000)
+    # Re-enable temporarily if needed: echo 1 | sudo tee /proc/sys/kernel/sysrq
+    "kernel.sysrq"                               = 0;
 
-    # NOTE: kernel.modules_disabled = 1 intentionally omitted.
-    # It locks ALL further module loading for the lifetime of the boot session,
-    # which breaks GPU driver hot-reload, USB devices loaded after boot, and
-    # some GNOME/PipeWire kernel modules. Not safe on an AMD workstation.
+    # NOTE: kernel.modules_disabled intentionally omitted — it locks ALL further
+    # module loading for the boot session, breaking AMD GPU, USB devices loaded
+    # after boot, and some GNOME/PipeWire modules.
 
-    # NOTE: net.ipv4.conf.all.forwarding intentionally omitted.
-    # Docker sets this to 1 at runtime; overriding it here would break
-    # container networking.
+    # NOTE: net.ipv4.conf.all.forwarding intentionally omitted — Docker sets
+    # this to 1 at runtime; overriding it would break container networking.
   };
 
-  # ── Login banner (ADDED — BANN-7126) ────────────────────────────────────────
-  # /etc/issue is shown on virtual consoles before login.
-  # Even a minimal banner satisfies the Lynis check.
+  # ── Login banner (BANN-7126) ────────────────────────────────────────────────
   environment.etc."issue".text = ''
     ############################################################
     # Authorised access only. All activity is monitored and
@@ -198,9 +183,6 @@ in
   '';
 
   # ── CUPS access restriction (PRNT-2307) ────────────────────────────────────
-  # NixOS enables CUPS via services.printing.enable in configuration.nix.
-  # Restrict the web UI to localhost only (default NixOS setting is already
-  # localhost, but made explicit here so it survives future CUPS upgrades).
   services.printing.listenAddresses = lib.mkDefault [ "127.0.0.1:631" ];
   services.printing.allowFrom       = lib.mkDefault [ "localhost" ];
 
@@ -210,31 +192,29 @@ in
     openssl
     lynis
 
-    # ADDED: nftables — puts `nft` on PATH so Lynis can detect the firewall.
+    # nftables — puts `nft` on PATH so Lynis can detect the firewall (FIRE-4590)
     nftables
 
-    # ADDED: rkhunter — satisfies HRDN-7230 (malware scanner).
-    # Run manually:  sudo rkhunter --check
-    # Or set up a weekly systemd timer (see below).
-    rkhunter
+    # chkrootkit — satisfies HRDN-7230 (malware scanner)
+    # Run manually: sudo chkrootkit
+    chkrootkit
   ];
 
-  # ── rkhunter weekly scan (ADDED — HRDN-7230) ───────────────────────────────
-  # Runs a rootkit/malware scan every Sunday at 03:00 and logs to journal.
-  # To review results: journalctl -u rkhunter-scan
-  systemd.services.rkhunter-scan = {
-    description = "Weekly rkhunter malware scan";
+  # ── chkrootkit weekly scan (HRDN-7230) ─────────────────────────────────────
+  # Runs a rootkit scan every Sunday at 03:00 and logs to the journal.
+  # Review results: journalctl -u chkrootkit-scan
+  systemd.services.chkrootkit-scan = {
+    description = "Weekly chkrootkit malware scan";
     serviceConfig = {
-      Type            = "oneshot";
-      ExecStartPre    = "${pkgs.rkhunter}/bin/rkhunter --update --nocolors 2>&1 || true";
-      ExecStart       = "${pkgs.rkhunter}/bin/rkhunter --check --nocolors --skip-keypress --report-warnings-only";
-      StandardOutput  = "journal";
-      StandardError   = "journal";
+      Type           = "oneshot";
+      ExecStart      = "${pkgs.chkrootkit}/bin/chkrootkit";
+      StandardOutput = "journal";
+      StandardError  = "journal";
     };
   };
 
-  systemd.timers.rkhunter-scan = {
-    description = "Weekly rkhunter malware scan timer";
+  systemd.timers.chkrootkit-scan = {
+    description = "Weekly chkrootkit malware scan timer";
     wantedBy    = [ "timers.target" ];
     timerConfig = {
       OnCalendar         = "Sun 03:00:00";
