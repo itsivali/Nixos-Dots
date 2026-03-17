@@ -79,23 +79,21 @@ in
   };
 
   # ── Kernel audit daemon (ACCT-9628) ─────────────────────────────────────────
-  # auditd running is what Lynis checks for (ACCT-9628).
+  # security.auditd.enable = true starts the auditd daemon, which is what Lynis
+  # checks for (ACCT-9628).
   #
-  # Custom -w file-watch rules fail on NixOS because /etc entries are managed
-  # as symlinks into the Nix store — auditctl cannot resolve them at load time
-  # and exits non-zero, causing audit-rules-nixos.service to fail on every boot.
-  # Syscall rules (-a always,exit -S execve) also fail due to AppArmor LSM
-  # context not being populated early enough (audit_log_subj_ctx errors).
+  # security.audit (the rules-loading module) is intentionally NOT set here.
+  # Every combination of rules we've tried causes audit-rules-nixos.service to
+  # fail on NixOS:
+  #   - Syscall rules (-a always,exit -S execve) trigger audit_log_subj_ctx
+  #     errors because AppArmor LSM context isn't populated early enough.
+  #   - File-watch rules (-w /etc/passwd) fail because NixOS manages /etc as
+  #     symlinks into the Nix store, which auditctl cannot watch at load time.
+  #   - Even rules = [] still generates a file whose line 2 auditctl rejects.
   #
-  # rules = [] generates a minimal rules file containing only the -D reset
-  # directive, which auditctl accepts without error. The daemon starts cleanly,
-  # all system calls are recorded at the kernel default level, and Lynis
-  # ACCT-9628 is satisfied by auditd being active.
+  # With only auditd.enable = true, the daemon runs cleanly, records system
+  # calls at the kernel default level, and Lynis ACCT-9628 is satisfied.
   security.auditd.enable = true;
-  security.audit = {
-    enable = true;
-    rules  = [];
-  };
 
   # ── Unused network protocol blacklist (NETW-3200) ──────────────────────────
   # dccp, sctp, rds, tipc are loaded but not needed on this workstation.
