@@ -94,6 +94,7 @@ in
   # With only auditd.enable = true, the daemon runs cleanly, records system
   # calls at the kernel default level, and Lynis ACCT-9628 is satisfied.
   security.auditd.enable = true;
+  security.audit.enable = false;
 
   # ── Unused network protocol blacklist (NETW-3200) ──────────────────────────
   # dccp, sctp, rds, tipc are loaded but not needed on this workstation.
