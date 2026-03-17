@@ -83,7 +83,6 @@ in
   security.audit = {
     enable = true;
     rules = [
-      "-a always,exit -F arch=b64 -S execve -F euid=0 -k priv_exec"
       "-w /etc/passwd  -p wa -k passwd_changes"
       "-w /etc/shadow  -p wa -k shadow_changes"
       "-w /etc/sudoers -p wa -k sudoers_changes"
