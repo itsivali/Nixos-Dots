@@ -583,6 +583,7 @@ in
       vlc
       remmina
       localsend
+      bitwarden-desktop
       # ── Keyboard helpers ─────────────────────────────────────────────────
       openFiles
       openTerminal
@@ -637,8 +638,6 @@ in
     ++ nerdFontPkgs
     ++ maybePkg "podman-desktop"
     ++ maybePkg "gitkraken"
-    ++ maybePkg "drawio"
-    ++ maybePkg "insomnia"
     ++ maybePkg "postman"
     ;
 }
