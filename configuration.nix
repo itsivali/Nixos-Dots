@@ -102,11 +102,12 @@ in
 
     kernel.sysctl = {
       # Performance tuning (security hardening lives in modules/security.nix)
-      "vm.swappiness"                  = 10;
+      "vm.swappiness"                  = 5;       # CHANGED: 10 → 5  (less aggressive with smaller zram)
       "vm.vfs_cache_pressure"          = 50;
       "vm.dirty_background_ratio"      = 5;
       "vm.dirty_ratio"                 = 20;
       "vm.page-cluster"                = 0;
+      "vm.watermark_scale_factor"      = 125;     # ADDED: wake kswapd earlier (default 10 = 0.1%)
       "kernel.nmi_watchdog"            = 0;
       "kernel.sched_autogroup_enabled" = 1;
       "kernel.sched_migration_cost_ns" = 5000000;
@@ -117,14 +118,16 @@ in
   # PERFORMANCE
   ############################################################
   zramSwap = {
-    enable = true;
-    memoryPercent = 50;
+    enable        = true;
+    memoryPercent = 30;          # CHANGED: 50 → 30  (zstd offsets the reduction)
+    algorithm     = "zstd";      # ADDED: better ratio than lz4 default
+    priority      = 100;         # ADDED: always prefer zram over any disk swap
   };
 
   services.earlyoom = {
-    enable = true;
-    freeMemThreshold = 10;
-    freeSwapThreshold = 5;
+    enable             = true;
+    freeMemThreshold   = 12;     # CHANGED: 10 → 12  (act earlier; less swap buffer now)
+    freeSwapThreshold  = 8;      # CHANGED: 5 → 8
   };
 
   powerManagement.enable = true;
