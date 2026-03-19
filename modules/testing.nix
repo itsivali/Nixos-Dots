@@ -1,158 +1,86 @@
-# modules/testing.nix
-# Optional testing services (safe defaults, localhost-only)
-# Now also includes support for testing packages and custom aliases.
-{ config, pkgs, lib, ... }:
+# testing.nix
+# ─────────────────────────────────────────────────────────────────────────────
+# A nix-shell environment for quickly trialling packages — free OR unfree.
+#
+# USAGE
+# ──────
+#   Default (uses packages listed below):
+#     nix-shell testing.nix
+#
+#   One-liner (inline, no file needed):
+#     nix-shell -p stremio-linux-shell --impure
+#     NIXPKGS_ALLOW_UNFREE=1 nix-shell -p stremio-linux-shell --impure
+#
+#   With this file (recommended — handles unfree automatically):
+#     nix-shell testing.nix
+#
+#   Override packages at the command line:
+#     nix-shell testing.nix --arg extraPackages '[ pkgs.vlc pkgs.stremio ]'
+#
+# ADDING PACKAGES
+# ────────────────
+#   Free package:    add  pkgs.curl  to the `packages` list below.
+#   Unfree package:  add  pkgs.stremio-linux-shell  — allowUnfree handles it.
+# ─────────────────────────────────────────────────────────────────────────────
 
-{
-  options.testing = {
-    enable = lib.mkEnableOption "testing services and packages";
+{ extraPackages ? [ ] }:
 
-    # Only open firewall ports if you explicitly want LAN access
-    openFirewall = lib.mkEnableOption "open firewall ports for enabled testing services (NOT recommended by default)";
+let
+  # ── Nixpkgs with unfree packages unlocked ───────────────────────────────
+  pkgs = import <nixpkgs> {
+    config = {
+      # Allow ALL unfree packages (simplest for a scratch/testing shell)
+      allowUnfree = true;
 
-    # Databases (localhost only by default)
-    postgresql = lib.mkEnableOption "PostgreSQL testing";
-    mysql = lib.mkEnableOption "MySQL testing";
-    redis = lib.mkEnableOption "Redis testing";
-    mongodb = lib.mkEnableOption "MongoDB testing";
-
-    # Web servers (localhost only unless openFirewall=true)
-    nginx = lib.mkEnableOption "Nginx testing";
-    apache = lib.mkEnableOption "Apache testing";
-
-    # Additional packages you want available for testing (e.g. curl, jq, hey)
-    extraPackages = lib.mkOption {
-      type = lib.types.listOf lib.types.package;
-      default = [ ];
-      description = "List of packages to install system-wide for testing purposes.";
-      example = lib.literalExpression "[ pkgs.hey pkgs.jq ]";
-    };
-
-    # Custom shell aliases for testing workflows
-    shellAliases = lib.mkOption {
-      type = lib.types.attrsOf lib.types.str;
-      default = { };
-      description = "Shell aliases added when testing is enabled.";
-      example = lib.literalExpression ''
-        {
-          pg-test = "psql -U test -h localhost postgres";
-          mysql-test = "mysql -u test -p -h 127.0.0.1";
-        }
-      '';
+      # ── Alternatively: allowlist only specific unfree packages ──────────
+      # Comment out allowUnfree above and uncomment this block instead:
+      #
+      # allowUnfreePredicate = pkg:
+      #   builtins.elem (pkgs.lib.getName pkg) [
+      #     "stremio-linux-shell"
+      #     "discord"
+      #     "slack"
+      #   ];
     };
   };
 
-  config = lib.mkIf config.testing.enable {
+  # ── Packages to drop into the shell ─────────────────────────────────────
+  # Add anything here — free or unfree — and it will just work.
+  packages = with pkgs; [
 
-    # -------------------------
-    # PostgreSQL (local-only, safer auth)
-    # -------------------------
-    services.postgresql = lib.mkIf config.testing.postgresql {
-      enable = true;
-      package = pkgs.postgresql_16;
-      enableTCPIP = true;
+    # ── Media / Streaming ────────────────────────────────────────────────
+    stremio-linux-shell       # unfree — works because allowUnfree = true above
 
-      settings = {
-        listen_addresses = "127.0.0.1";
-        password_encryption = "scram-sha-256";
-      };
+    # ── Utilities (free — uncomment as needed) ───────────────────────────
+    # curl
+    # wget
+    # jq
+    # htop
+    # ffmpeg
+    # vlc
+    # mpv
 
-      authentication = lib.mkOverride 10 ''
-        # local socket: use peer auth
-        local all all peer
+    # ── Add your test packages below this line ───────────────────────────
 
-        # TCP localhost: require password (SCRAM)
-        host  all all 127.0.0.1/32 scram-sha-256
-        host  all all ::1/128      scram-sha-256
-      '';
+  ] ++ extraPackages;  # also picks up any --arg extraPackages passed on CLI
 
-      initialScript = pkgs.writeText "init-test-postgres.sql" ''
-        DO
-        $do$
-        BEGIN
-          IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'test') THEN
-            CREATE ROLE test WITH LOGIN PASSWORD 'test' SUPERUSER;
-          END IF;
-        END
-        $do$;
-      '';
-    };
+in
+pkgs.mkShell {
+  name = "pkg-test-shell";
 
-    # -------------------------
-    # MySQL (local-only)
-    # -------------------------
-    services.mysql = lib.mkIf config.testing.mysql {
-      enable = true;
-      package = pkgs.mysql80;
-      settings.mysqld.bind-address = "127.0.0.1";
-    };
+  buildInputs = packages;
 
-    # -------------------------
-    # Redis (local-only)
-    # -------------------------
-    services.redis.servers."test" = lib.mkIf config.testing.redis {
-      enable = true;
-      port = 6379;
-      bind = "127.0.0.1";
-    };
-
-    # -------------------------
-    # MongoDB (local-only)
-    # -------------------------
-    services.mongodb = lib.mkIf config.testing.mongodb {
-      enable = true;
-      bind_ip = "127.0.0.1";
-    };
-
-    # -------------------------
-    # Nginx / Apache (local-only)
-    # -------------------------
-    services.nginx = lib.mkIf config.testing.nginx {
-      enable = true;
-      virtualHosts."localhost" = {
-        root = "/var/www";
-        locations."/" = { index = "index.html"; };
-        listen = [
-          { addr = "127.0.0.1"; port = 80; }
-        ];
-      };
-    };
-
-    services.httpd = lib.mkIf config.testing.apache {
-      enable = true;
-      adminAddr = "admin@localhost";
-      listen = [
-        { ip = "127.0.0.1"; port = 8080; }
-      ];
-      virtualHosts."localhost" = { documentRoot = "/var/www"; };
-    };
-
-    # -------------------------
-    # Client tools for enabled services
-    # -------------------------
-    environment.systemPackages =
-      (lib.optionals config.testing.postgresql [ pkgs.postgresql ])
-      ++ (lib.optionals config.testing.mysql [ pkgs.mysql80 ])
-      ++ (lib.optionals config.testing.redis [ pkgs.redis ])
-      ++ (lib.optionals config.testing.mongodb [ pkgs.mongodb ])
-      ++ config.testing.extraPackages;   # user‑supplied testing packages
-
-    # -------------------------
-    # Shell aliases for testing
-    # -------------------------
-    environment.shellAliases = config.testing.shellAliases;
-
-    # -------------------------
-    # Firewall (ONLY if openFirewall = true)
-    # -------------------------
-    networking.firewall.allowedTCPPorts = lib.mkIf config.testing.openFirewall (
-      [ ]
-      ++ lib.optionals config.testing.postgresql [ 5432 ]
-      ++ lib.optionals config.testing.mysql [ 3306 ]
-      ++ lib.optionals config.testing.redis [ 6379 ]
-      ++ lib.optionals config.testing.mongodb [ 27017 ]
-      ++ lib.optionals config.testing.nginx [ 80 ]
-      ++ lib.optionals config.testing.apache [ 8080 ]
-    );
-  };
+  shellHook = ''
+    echo ""
+    echo "  ╔══════════════════════════════════════════════╗"
+    echo "  ║       willis@prague — pkg test shell         ║"
+    echo "  ║  unfree: allowed  │  exit: Ctrl-D or 'exit' ║"
+    echo "  ╚══════════════════════════════════════════════╝"
+    echo ""
+    echo "  Loaded packages:"
+    ${pkgs.lib.concatMapStringsSep "\n"
+        (p: "  echo '    • ${p.name or (builtins.toString p)}'")
+        packages}
+    echo ""
+  '';
 }
