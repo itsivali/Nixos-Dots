@@ -314,14 +314,6 @@ in
   };
 
   ############################################################
-  # TESTING SERVICES DEFAULTS (opt-in; actual logic in modules/testing.nix)
-  ############################################################
-  testing = {
-    enable       = false;
-    openFirewall = false;
-  };
-
-  ############################################################
   # NIX SETTINGS — flakes + download tuning
   ############################################################
   nix = {
