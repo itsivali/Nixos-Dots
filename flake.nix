@@ -37,7 +37,7 @@
           ./modules/containers.nix
           ./modules/cicd.nix
           ./modules/security.nix
-          ./modules/testing.nix
+          
 
           home-manager.nixosModules.home-manager
           {
