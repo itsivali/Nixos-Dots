@@ -394,6 +394,21 @@ in
   services.thermald.enable = lib.mkDefault false;
 
   ############################################################
+  # TEAMVIEWER
+  # • services.teamviewer.enable pulls in pkgs.teamviewer and
+  #   starts/enables teamviewerd.service automatically.
+  # • Remote-control of another machine only works when THEIR
+  #   session is X11 (Wayland blocks TeamViewer input injection).
+  #   On THIS machine the GNOME X11 session is always available
+  #   in GDM because services.xserver.enable = true above.
+  #   When you need to be remoted INTO, log out and choose
+  #   "GNOME on Xorg" at the GDM session menu — or set
+  #   services.displayManager.gdm.wayland = false to make X11
+  #   the system-wide default.
+  ############################################################
+  services.teamviewer.enable = true;
+
+  ############################################################
   # STATE VERSION
   ############################################################
   system.stateVersion = "25.11";

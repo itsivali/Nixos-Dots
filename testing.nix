@@ -49,7 +49,7 @@ let
   packages = with pkgs; [
 
     # ── Media / Streaming ────────────────────────────────────────────────
-    stremio-linux-shell       # unfree — works because allowUnfree = true above
+    efibootmgr      # unfree — works because allowUnfree = true above
 
     # ── Utilities (free — uncomment as needed) ───────────────────────────
     # curl
